@@ -139,19 +139,22 @@ async function upsertRow(sheetName, data, keyField) {
 // ── Sincronizar VISTA_BICIS cuando cambia ubicación en STOCK ──────────────────
 async function syncVistaUbicacion(id_producto, ubicacion) {
   try {
+    console.log('[vista] sync inicio:', id_producto, '->', ubicacion);
     const token = await getToken();
     const r = await axios.get(`${SHEETS_BASE}/${SHEET_ID}/values/VISTA_BICIS!A:A`,
       { headers: { Authorization: `Bearer ${token}` } });
     const rows = r.data.values || [];
-    const rowIdx = rows.findIndex(row => row[0] === id_producto);
-    if (rowIdx < 0) return;
+    const rowIdx = rows.findIndex(row => (row[0]||'').trim() === (id_producto||'').trim());
+    console.log('[vista] rowIdx:', rowIdx, 'total rows:', rows.length);
+    if (rowIdx < 0) { console.log('[vista] producto no encontrado en VISTA_BICIS'); return; }
     const rowNum = rowIdx + 1;
-    await axios.put(
+    const res = await axios.put(
       `${SHEETS_BASE}/${SHEET_ID}/values/VISTA_BICIS!G${rowNum}?valueInputOption=USER_ENTERED`,
       { values: [[ubicacion]] },
       { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
-  } catch (e) { console.error('[bg vista]', e.message); }
+    console.log('[vista] OK fila', rowNum, 'status:', res.status);
+  } catch (e) { console.error('[bg vista] ERROR:', e.response?.data || e.message); }
 }
 
 // ── Telegram helpers ───────────────────────────────────────────────────────────
