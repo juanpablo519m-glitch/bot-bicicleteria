@@ -197,7 +197,7 @@ async function processUpdate(update) {
   const sesiones    = cache.sesiones.filter(s => s.telegram_id);
   const stock       = cache.stock.filter(s => s.id_producto);
   const movPend     = cache.movimientos.filter(m => m.id_movimiento && m.estado === 'pendiente');
-  const factPend    = cache.facturas.filter(f => f.id_factura && f.factura_realizada === 'NO');
+  const factPend    = [];
 
   let userId, chatId, text, cb, cbId, firstName, message;
   if (update.callback_query) {
@@ -512,7 +512,7 @@ async function processUpdate(update) {
   }
   if (cb === 'fact_ok' && estado === 'FACT_CONF') {
     const d = datos;
-    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), factura_realizada: 'NO' });
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), factura_realizada: 'FALSE' });
     await clearSession();
     await tgSend(chatId, '✅ Datos de factura guardados. Revisá la hoja FACTURAS en Google Sheets.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
