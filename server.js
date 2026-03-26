@@ -157,11 +157,32 @@ function now() {
   }).split('/').join('-').replace(', ', ' ');
 }
 
+// ── Fuzzy search ───────────────────────────────────────────────────────────────
+function norm(s) {
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m+1}, (_,i) => Array.from({length: n+1}, (_,j) => i||j));
+  for (let i=1;i<=m;i++) for (let j=1;j<=n;j++)
+    dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function fuzzy(query, target) {
+  const q = norm(query), t = norm(target);
+  if (!q) return false;
+  if (t.includes(q)) return true;
+  if (q.length < 3) return false;
+  return t.split(/\s+/).some(w => levenshtein(q,w) <= Math.max(1, Math.floor(q.length/4)));
+}
+
 // ── Menú principal ─────────────────────────────────────────────────────────────
 function mainMenu(rol, movPend, factPend) {
   const kb = [[{ text: '📦 Consultar Stock', callback_data: 'stock' }]];
-  if (['operador','aprobador','administrador'].includes(rol))
+  if (['operador','aprobador','administrador'].includes(rol)) {
+    kb.push([{ text: '🔄 Transferir Producto', callback_data: 'transf2' }]);
     kb.push([{ text: '📋 Registrar Movimiento', callback_data: 'movimiento' }]);
+  }
   if (['aprobador','administrador'].includes(rol)) {
     const n = movPend.length + factPend.length;
     kb.push([{ text: `✅ Pendientes${n > 0 ? ' ('+n+')' : ''}`, callback_data: 'pendientes' }]);
@@ -215,10 +236,9 @@ async function processUpdate(update) {
   const findUser  = uid => usuarios.find(u => String(u.telegram_id) === String(uid)) || null;
   const findSesion= uid => sesiones.find(s => String(s.telegram_id) === String(uid)) || null;
   const findProd  = q => {
-    const ql = (q || '').toLowerCase().trim();
     return stock.filter(p =>
-      (p.id_producto||'').toLowerCase().includes(ql) || (p.marca||'').toLowerCase().includes(ql) ||
-      (p.modelo||'').toLowerCase().includes(ql)      || (p.descripcion||'').toLowerCase().includes(ql)
+      fuzzy(q, p.id_producto||'') || fuzzy(q, p.marca||'') ||
+      fuzzy(q, p.modelo||'')      || fuzzy(q, p.descripcion||'')
     );
   };
 
@@ -571,6 +591,83 @@ async function processUpdate(update) {
       await appendRow('COMPRAS', { fecha: t, tipo: p.tipo, marca: p.marca||'', modelo: p.modelo||'', descripcion: p.descripcion||'', cantidad: String(p.cantidad||1), precio_unitario: p.precio_unitario||'0', rodado: p.rodado||'', ubicacion, estado: 'pendiente' });
     await clearSession();
     await tgSend(chatId, `✅ <b>${productos.length} producto(s)</b> guardados en la hoja <b>COMPRAS</b>. Revisalos y pasalos al stock cuando quieras.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    return;
+  }
+
+  // ── Transferencia mejorada ─────────────────────────────────────────────────
+  if (cb === 'transf2') {
+    await saveSession('TRANSF2_ORIGEN', {});
+    await tgSend(chatId, '🔄 <b>Transferir Producto</b>\n¿Desde dónde lo movés?',
+      [[{ text: '🏪 Desde Local', callback_data: 't2_or_local' }, { text: '🏭 Desde Galpón', callback_data: 't2_or_galpon' }],
+       [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if ((cb === 't2_or_local' || cb === 't2_or_galpon') && estado === 'TRANSF2_ORIGEN') {
+    const origen = cb === 't2_or_local' ? 'local' : 'galpon';
+    const destino = origen === 'local' ? 'galpon' : 'local';
+    await saveSession('TRANSF2_CAT', { origen, destino });
+    await tgSend(chatId, `🔄 <b>De ${origen} → ${destino}</b>\n¿Qué tipo de producto?`,
+      [[{ text: '🚲 Bicicleta', callback_data: 't2_cat_bici' }, { text: '🏗️ Cuadro', callback_data: 't2_cat_cuad' }],
+       [{ text: '🔧 Accesorio', callback_data: 't2_cat_acc' }, { text: '🔍 Todos', callback_data: 't2_cat_todo' }],
+       [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb.startsWith('t2_cat_') && estado === 'TRANSF2_CAT') {
+    const catMap = { t2_cat_bici:'bicicleta', t2_cat_cuad:'cuadro', t2_cat_acc:'accesorio', t2_cat_todo:'' };
+    const cat = catMap[cb] ?? '';
+    await saveSession('TRANSF2_BUSCA', { ...datos, cat });
+    await tgSend(chatId, '🔍 Escribí la marca o modelo (toleramos errores de tipeo):',
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (estado === 'TRANSF2_BUSCA' && text) {
+    const { origen, destino, cat } = datos;
+    let resultados = stock.filter(p =>
+      p.ubicacion === origen &&
+      (cat === '' || (p.tipo||'').toLowerCase() === cat) &&
+      (fuzzy(text, p.marca||'') || fuzzy(text, p.modelo||'') || fuzzy(text, p.id_producto||'') || fuzzy(text, p.descripcion||''))
+    );
+    if (!resultados.length) {
+      await tgSend(chatId, `❌ No encontré "${text}" en ${origen}. Intentá con otro nombre:`,
+        [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      return;
+    }
+    if (resultados.length === 1) {
+      const p = resultados[0];
+      await saveSession('TRANSF2_CONF', { ...datos, id_producto: p.id_producto, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
+      await tgSend(chatId,
+        `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.id_producto})\n📍 ${origen} → ${destino}`,
+        [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      return;
+    }
+    // Múltiples resultados — mostrar botones
+    await saveSession('TRANSF2_PICK', { ...datos });
+    const kb = resultados.slice(0, 8).map(p => ([{
+      text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.ubicacion})`,
+      callback_data: `t2_pick_${p.id_producto}`
+    }]));
+    kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
+    await tgSend(chatId, `🔍 Encontré ${resultados.length} coincidencias. ¿Cuál es?`, kb);
+    return;
+  }
+  if (cb.startsWith('t2_pick_') && estado === 'TRANSF2_PICK') {
+    const id = cb.slice(8);
+    const p = cache.stock.find(p => p.id_producto === id);
+    if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
+    const { origen, destino } = datos;
+    await saveSession('TRANSF2_CONF', { ...datos, id_producto: p.id_producto, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
+    await tgSend(chatId,
+      `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.id_producto})\n📍 ${origen} → ${destino}`,
+      [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 't2_ok' && estado === 'TRANSF2_CONF') {
+    const { id_producto, marca, modelo, rodado, destino } = datos;
+    await upsertRow('STOCK', { id_producto, ubicacion: destino, ultima_actualizacion: now() }, 'id_producto');
+    await clearSession();
+    await tgSend(chatId,
+      `✅ <b>${marca} ${modelo}${rodado ? ' R'+rodado : ''}</b> transferido a <b>${destino}</b>.`,
+      [[{ text: '🔄 Otra transferencia', callback_data: 'transf2' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
 
