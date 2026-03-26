@@ -136,6 +136,24 @@ async function upsertRow(sheetName, data, keyField) {
   }
 }
 
+// ── Sincronizar VISTA_BICIS cuando cambia ubicación en STOCK ──────────────────
+async function syncVistaUbicacion(id_producto, ubicacion) {
+  try {
+    const token = await getToken();
+    const r = await axios.get(`${SHEETS_BASE}/${SHEET_ID}/values/VISTA_BICIS!A:A`,
+      { headers: { Authorization: `Bearer ${token}` } });
+    const rows = r.data.values || [];
+    const rowIdx = rows.findIndex(row => row[0] === id_producto);
+    if (rowIdx < 0) return;
+    const rowNum = rowIdx + 1;
+    await axios.put(
+      `${SHEETS_BASE}/${SHEET_ID}/values/VISTA_BICIS!G${rowNum}?valueInputOption=USER_ENTERED`,
+      { values: [[ubicacion]] },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+  } catch (e) { console.error('[bg vista]', e.message); }
+}
+
 // ── Telegram helpers ───────────────────────────────────────────────────────────
 async function tgPost(method, body) {
   try { return (await axios.post(`${TG}/${method}`, body)).data; }
@@ -664,6 +682,7 @@ async function processUpdate(update) {
   if (cb === 't2_ok' && estado === 'TRANSF2_CONF') {
     const { id_producto, marca, modelo, rodado, destino } = datos;
     await upsertRow('STOCK', { id_producto, ubicacion: destino, ultima_actualizacion: now() }, 'id_producto');
+    syncVistaUbicacion(id_producto, destino).catch(e => console.error('[vista sync]', e.message));
     await clearSession();
     await tgSend(chatId,
       `✅ <b>${marca} ${modelo}${rodado ? ' R'+rodado : ''}</b> transferido a <b>${destino}</b>.`,
