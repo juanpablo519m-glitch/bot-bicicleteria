@@ -247,6 +247,14 @@ async function processUpdate(update) {
       text = tr.data?.text || '';
       if (!text) { await tgSend(chatId, '❌ No entendí el audio. Intentá escribir.'); return; }
       await tgSend(chatId, `🎤 Entendí: <i>"${text}"</i>`);
+      // Detectar intención por voz
+      const tl = text.toLowerCase().trim();
+      if (/consultar|buscar|stock|ver stock/.test(tl)) { cb = 'stock'; text = ''; }
+      else if (/movimiento|registrar|entrada|salida/.test(tl)) { cb = 'movimiento'; text = ''; }
+      else if (/men[uú]|inicio|volver/.test(tl)) { cb = 'main_menu'; text = ''; }
+      else if (/transferir|transferencia/.test(tl)) { cb = 'transf2'; text = ''; }
+      // Si no coincide ningún comando, tratar como búsqueda directa de producto
+      else { await saveSession('WAIT_SEARCH', {}); }
     } catch (e) { await tgSend(chatId, '❌ Error al transcribir: ' + e.message); return; }
   }
 
