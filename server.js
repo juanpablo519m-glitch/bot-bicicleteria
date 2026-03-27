@@ -198,15 +198,11 @@ function fuzzy(query, target) {
 }
 
 // ── Menú principal ─────────────────────────────────────────────────────────────
-function mainMenu(rol, movPend, factPend) {
+function mainMenu(rol) {
   const kb = [[{ text: '📦 Consultar Stock', callback_data: 'stock' }]];
   if (['operador','aprobador','administrador'].includes(rol)) {
     kb.push([{ text: '🔄 Transferir Producto', callback_data: 'transf2' }]);
     kb.push([{ text: '📋 Registrar Movimiento', callback_data: 'movimiento' }]);
-  }
-  if (['aprobador','administrador'].includes(rol)) {
-    const n = movPend.length + factPend.length;
-    kb.push([{ text: `✅ Pendientes${n > 0 ? ' ('+n+')' : ''}`, callback_data: 'pendientes' }]);
   }
   if (rol === 'administrador') kb.push([{ text: '⚙️ Panel Admin', callback_data: 'admin' }]);
   return kb;
@@ -284,7 +280,7 @@ async function processUpdate(update) {
   // ── /start ─────────────────────────────────────────────────────────────────
   if (text === '/start' || cb === 'main_menu') {
     await clearSession();
-    await tgSend(chatId, `Hola <b>${user.nombre}</b> (${rol}) 👋\n¿Qué querés hacer?`, mainMenu(rol, movPend, factPend));
+    await tgSend(chatId, `Hola <b>${user.nombre}</b> (${rol}) 👋\n¿Qué querés hacer?`, mainMenu(rol));
     return;
   }
 
@@ -694,7 +690,7 @@ async function processUpdate(update) {
   }
 
   // Fallback
-  if (text && !cb) { await tgSend(chatId, 'No entendí ese mensaje. Usá el menú 👇', mainMenu(rol, movPend, factPend)); await clearSession(); }
+  if (text && !cb) { await tgSend(chatId, 'No entendí ese mensaje. Usá el menú 👇', mainMenu(rol)); await clearSession(); }
 }
 
 // ── Express ────────────────────────────────────────────────────────────────────
