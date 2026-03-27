@@ -253,8 +253,8 @@ async function processUpdate(update) {
       else if (/movimiento|registrar|entrada|salida/.test(tl)) { cb = 'movimiento'; text = ''; }
       else if (/men[uú]|inicio|volver/.test(tl)) { cb = 'main_menu'; text = ''; }
       else if (/transferir|transferencia/.test(tl)) { cb = 'transf2'; text = ''; }
-      // Si no coincide ningún comando, tratar como búsqueda directa de producto
-      else { await saveSession('WAIT_SEARCH', {}); }
+      // Si no coincide ningún comando, buscar directamente como producto
+      else { cb = 'voice_search'; }
     } catch (e) { await tgSend(chatId, '❌ Error al transcribir: ' + e.message); return; }
   }
 
@@ -289,6 +289,29 @@ async function processUpdate(update) {
   if (text === '/start' || cb === 'main_menu') {
     await clearSession();
     await tgSend(chatId, `Hola <b>${user.nombre}</b> (${rol}) 👋\n¿Qué querés hacer?`, mainMenu(rol));
+    return;
+  }
+
+  // ── Búsqueda directa por voz ──────────────────────────────────────────────
+  if (cb === 'voice_search' && text) {
+    const res = findProd(text); await clearSession();
+    if (!res.length) {
+      await tgSend(chatId, `No encontré "${text}" en el stock.`, [[{ text: '🔍 Buscar de nuevo', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    } else {
+      if (res.length > 1) await tgSend(chatId, `📦 <b>${res.length} resultados para "${text}":</b>`);
+      for (const p of res) {
+        const stk = Number(p.stock_actual) || 0;
+        const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+        const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+        let msg = `📦 <b>${p.marca} ${p.modelo}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
+        msg += `${p.descripcion||''} | ${p.ubicacion||'local'}\n`;
+        msg += `Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
+        msg += `💰 Máx: ${pmax} | Mín: ${pmin}`;
+        const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
+        if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
+        await tgSend(chatId, msg, kb);
+      }
+    }
     return;
   }
 
