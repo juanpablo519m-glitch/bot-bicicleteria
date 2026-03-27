@@ -294,7 +294,18 @@ async function processUpdate(update) {
 
   // ── Búsqueda directa por voz ──────────────────────────────────────────────
   if (cb === 'voice_search' && text) {
-    const res = findProd(text); await clearSession();
+    // Buscar por frase completa primero, si no hay resultados buscar por palabras
+    let res = findProd(text);
+    if (!res.length) {
+      const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const sets = words.map(w => findProd(w));
+      if (sets.length) {
+        const ids = sets[0].map(p => p.numero_serie);
+        const inter = sets.slice(1).reduce((acc, s) => acc.filter(id => s.some(p => p.numero_serie === id)), ids);
+        res = inter.length ? stock.filter(p => inter.includes(p.numero_serie)) : sets.flat().filter((p,i,a) => a.findIndex(x=>x.numero_serie===p.numero_serie)===i);
+      }
+    }
+    await clearSession();
     if (!res.length) {
       await tgSend(chatId, `No encontré "${text}" en el stock.`, [[{ text: '🔍 Buscar de nuevo', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     } else {
