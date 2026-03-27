@@ -212,7 +212,7 @@ function mainMenu(rol) {
 async function processUpdate(update) {
   const usuarios    = cache.usuarios.filter(u => u.telegram_id);
   const sesiones    = cache.sesiones.filter(s => s.telegram_id);
-  const stock       = cache.stock.filter(s => s.id_producto);
+  const stock       = cache.stock.filter(s => s.numero_serie || s.marca);
   const movPend     = cache.movimientos.filter(m => m.id_movimiento && m.estado === 'pendiente');
   const factPend    = [];
 
@@ -254,8 +254,8 @@ async function processUpdate(update) {
   const findSesion= uid => sesiones.find(s => String(s.telegram_id) === String(uid)) || null;
   const findProd  = q => {
     return stock.filter(p =>
-      fuzzy(q, p.id_producto||'') || fuzzy(q, p.marca||'') ||
-      fuzzy(q, p.modelo||'')      || fuzzy(q, p.descripcion||'')
+      fuzzy(q, p.numero_serie||'') || fuzzy(q, p.marca||'') ||
+      fuzzy(q, p.modelo||'')       || fuzzy(q, p.descripcion||'')
     );
   };
 
@@ -297,8 +297,10 @@ async function processUpdate(update) {
     } else {
       let msg = `📦 <b>Resultados para "${text}":</b>\n\n`;
       for (const p of res) {
-        const stk = p.tipo === 'accesorio' ? `Stock: ${p.stock_actual}` : `Estado: ${p.estado_unidad || 'disponible'}`;
-        msg += `<b>${p.marca} ${p.modelo}</b> (${p.id_producto})\n${p.descripcion || ''} | ${p.ubicacion || 'local'}\n${stk} | $${p.precio_venta || '-'}\n\n`;
+        const stk = Number(p.stock_actual) || 0;
+        const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+        const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+        msg += `<b>${p.marca} ${p.modelo}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n${p.descripcion||''} | ${p.ubicacion||'local'}\nStock: ${stk} | ${p.estado_unidad||'disponible'}\n💰 Máx: ${pmax} | Mín: ${pmin}\n\n`;
       }
       await tgSend(chatId, msg.trim(), [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     }
