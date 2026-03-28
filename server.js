@@ -721,7 +721,7 @@ async function processUpdate(update) {
     let resultados = stock.filter(p =>
       p.ubicacion === origen &&
       (cat === '' || (p.tipo||'').toLowerCase() === cat) &&
-      (fuzzy(text, p.marca||'') || fuzzy(text, p.modelo||'') || fuzzy(text, p.id_producto||'') || fuzzy(text, p.descripcion||''))
+      (fuzzy(text, p.marca||'') || fuzzy(text, p.modelo||'') || fuzzy(text, p.numero_serie||'') || fuzzy(text, p.descripcion||''))
     );
     if (!resultados.length) {
       await tgSend(chatId, `❌ No encontré "${text}" en ${origen}. Intentá con otro nombre:`,
@@ -730,9 +730,9 @@ async function processUpdate(update) {
     }
     if (resultados.length === 1) {
       const p = resultados[0];
-      await saveSession('TRANSF2_CONF', { ...datos, id_producto: p.id_producto, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
+      await saveSession('TRANSF2_CONF', { ...datos, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
       await tgSend(chatId,
-        `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.id_producto})\n📍 ${origen} → ${destino}`,
+        `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})\n📍 ${origen} → ${destino}`,
         [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
       return;
     }
@@ -740,7 +740,7 @@ async function processUpdate(update) {
     await saveSession('TRANSF2_PICK', { ...datos });
     const kb = resultados.slice(0, 8).map(p => ([{
       text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.ubicacion})`,
-      callback_data: `t2_pick_${p.id_producto}`
+      callback_data: `t2_pick_${p.numero_serie}`
     }]));
     kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
     await tgSend(chatId, `🔍 Encontré ${resultados.length} coincidencias. ¿Cuál es?`, kb);
@@ -748,19 +748,19 @@ async function processUpdate(update) {
   }
   if (cb.startsWith('t2_pick_') && estado === 'TRANSF2_PICK') {
     const id = cb.slice(8);
-    const p = cache.stock.find(p => p.id_producto === id);
+    const p = cache.stock.find(p => p.numero_serie === id);
     if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
     const { origen, destino } = datos;
-    await saveSession('TRANSF2_CONF', { ...datos, id_producto: p.id_producto, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
+    await saveSession('TRANSF2_CONF', { ...datos, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
     await tgSend(chatId,
-      `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.id_producto})\n📍 ${origen} → ${destino}`,
+      `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})\n📍 ${origen} → ${destino}`,
       [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (cb === 't2_ok' && estado === 'TRANSF2_CONF') {
-    const { id_producto, marca, modelo, rodado, destino } = datos;
-    await upsertRow('STOCK', { id_producto, ubicacion: destino, ultima_actualizacion: now() }, 'id_producto');
-    syncVistaUbicacion(id_producto, destino).catch(e => console.error('[vista sync]', e.message));
+    const { numero_serie, marca, modelo, rodado, destino } = datos;
+    await upsertRow('STOCK', { numero_serie, ubicacion: destino, ultima_actualizacion: now() }, 'numero_serie');
+    syncVistaUbicacion(numero_serie, destino).catch(e => console.error('[vista sync]', e.message));
     await clearSession();
     await tgSend(chatId,
       `✅ <b>${marca} ${modelo}${rodado ? ' R'+rodado : ''}</b> transferido a <b>${destino}</b>.`,
