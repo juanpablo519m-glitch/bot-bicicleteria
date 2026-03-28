@@ -12,6 +12,7 @@ const ADMIN_ID  = '5307233657';
 const GROQ_KEY  = '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';
 const SHEET_ID  = '1qTMua-CQOeR3HrbcoCwoJKi9kW8foeEnzQhxIRKd3ps';
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
+const DRIVE_FOLDER_ID = '1U-o_gMKtbxYDkWM_LWeZUTc2LdpxJuIP';
 
 const SA = {
   client_email: 'bot-bicicleteria@n8n-bicicleteria.iam.gserviceaccount.com',
@@ -20,6 +21,7 @@ const SA = {
 
 // ── Google Auth (JWT manual — sin dependencias extra) ──────────────────────────
 let _tokenCache = { token: null, expiresAt: 0 };
+let _driveTokenCache = { token: null, expiresAt: 0 };
 
 async function getToken() {
   if (_tokenCache.token && _tokenCache.expiresAt > Date.now() + 60000) return _tokenCache.token;
@@ -44,15 +46,60 @@ async function getToken() {
   return _tokenCache.token;
 }
 
+async function getDriveToken() {
+  if (_driveTokenCache.token && _driveTokenCache.expiresAt > Date.now() + 60000) return _driveTokenCache.token;
+  const now = Math.floor(Date.now() / 1000);
+  const hdr = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const cls = Buffer.from(JSON.stringify({
+    iss: SA.client_email,
+    scope: 'https://www.googleapis.com/auth/drive.file',
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600, iat: now
+  })).toString('base64url');
+  const input = `${hdr}.${cls}`;
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(input);
+  const sig = signer.sign(SA.private_key).toString('base64url');
+  const jwt = `${input}.${sig}`;
+  const r = await axios.post('https://oauth2.googleapis.com/token',
+    new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  _driveTokenCache = { token: r.data.access_token, expiresAt: Date.now() + 3500000 };
+  return _driveTokenCache.token;
+}
+
+async function uploadToDrive(fileUrl, fileName, mimeType) {
+  try {
+    const token = await getDriveToken();
+    const fileResp = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const fileData = Buffer.from(fileResp.data);
+    const boundary = 'bicicleteria_boundary_xyz';
+    const metadata = JSON.stringify({ name: fileName, parents: [DRIVE_FOLDER_ID] });
+    const before = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`);
+    const after  = Buffer.from(`\r\n--${boundary}--`);
+    const body   = Buffer.concat([before, fileData, after]);
+    const resp = await axios.post(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+      body,
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}`, 'Content-Length': body.length } }
+    );
+    return `https://drive.google.com/file/d/${resp.data.id}/view`;
+  } catch (e) {
+    console.error('[drive upload]', e.message);
+    return null;
+  }
+}
+
 // ── Headers de cada hoja ───────────────────────────────────────────────────────
 const HEADERS = {
   SESIONES:               ['telegram_id','estado','datos','ts'],
   USUARIOS:               ['telegram_id','nombre','rol','activo','fecha_alta'],
   MOVIMIENTOS_PENDIENTES: ['id_movimiento','tipo','estado','id_producto','numero_serie','cantidad','descripcion_movimiento','referencia_doc','hash_duplicado','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica'],
+  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','factura_realizada'],
-  COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','ubicacion','estado']
+  COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','ubicacion','estado','foto_drive']
 };
 
 const CACHE_KEY = {
@@ -277,6 +324,9 @@ async function processUpdate(update) {
     msg += `💰 Máx: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
     if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
+    if (p.foto_url) {
+      await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
+    }
     await tgSend(chatId, msg, kb);
   };
 
@@ -625,20 +675,26 @@ async function processUpdate(update) {
     const filePath = fileInfo?.result?.file_path;
     if (!filePath) { await tgSend(chatId, '❌ Error al obtener el archivo.'); await clearSession(); return; }
     const fileUrl  = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+    const mimeType = isPhoto ? 'image/jpeg' : (message.document.mime_type || 'application/pdf');
+    const ext      = isPhoto ? 'jpg' : (filePath.split('.').pop() || 'pdf');
+    const fileName = `factura_${now().replace(/\//g,'-').replace(/ /g,'_').replace(/:/g,'')}.${ext}`;
     const ocrPrompt = 'Analizá esta factura de proveedor. Extraé TODOS los productos/artículos. Devolvé SOLO un JSON array sin markdown ni texto extra: [{"tipo":"bicicleta","marca":"","modelo":"","descripcion":"","cantidad":1,"precio_unitario":"0","rodado":""}]. Tipos: bicicleta, cuadro, accesorio, otro. rodado: número para bicis/cuadros (ej 26, 29), vacío para accesorios.';
-    let rawText = '[]';
-    try {
-      const groqBody = { model: 'meta-llama/llama-4-scout-17b-16e-instruct', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: fileUrl } }, { type: 'text', text: ocrPrompt }] }], max_tokens: 1000 };
-      const groqResp = await axios.post('https://api.groq.com/openai/v1/chat/completions', groqBody, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } });
-      rawText = groqResp.data.choices?.[0]?.message?.content || '[]';
-    } catch (e) { await tgSend(chatId, '❌ Error IA: ' + e.message); await clearSession(); return; }
+    const groqBody = { model: 'meta-llama/llama-4-scout-17b-16e-instruct', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: fileUrl } }, { type: 'text', text: ocrPrompt }] }], max_tokens: 1000 };
+    const [ocrRes, driveRes] = await Promise.allSettled([
+      axios.post('https://api.groq.com/openai/v1/chat/completions', groqBody, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }),
+      uploadToDrive(fileUrl, fileName, mimeType)
+    ]);
+    if (ocrRes.status === 'rejected') { await tgSend(chatId, '❌ Error IA: ' + ocrRes.reason.message); await clearSession(); return; }
+    const rawText = ocrRes.value.data.choices?.[0]?.message?.content || '[]';
+    const driveUrl = driveRes.status === 'fulfilled' ? driveRes.value : null;
     let productos = [];
     try { const s = rawText.indexOf('['); const e = rawText.lastIndexOf(']'); if (s !== -1 && e !== -1) productos = JSON.parse(rawText.slice(s, e+1)); } catch {}
     if (!productos.length) { await tgSend(chatId, '❌ No pude detectar productos. Intentá con una foto más nítida.'); await clearSession(); return; }
     let resumen = `📦 <b>Detecté ${productos.length} producto(s):</b>\n\n`;
     productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.descripcion}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
     resumen += '¿Dónde ingresan estos productos?';
-    await saveSession('FACT_PROV_UBIC', { productos });
+    if (driveUrl) resumen += `\n\n💾 <a href="${driveUrl}">Factura guardada en Drive</a>`;
+    await saveSession('FACT_PROV_UBIC', { productos, driveUrl });
     await tgSend(chatId, resumen, [[{ text: '🏪 Local', callback_data: 'fprov_local' }, { text: '🏭 Galpón', callback_data: 'fprov_galpon' }], [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
@@ -654,11 +710,13 @@ async function processUpdate(update) {
     return;
   }
   if (cb === 'fprov_ok' && estado === 'FACT_PROV_CONF') {
-    const { productos, ubicacion } = datos; const t = now();
+    const { productos, ubicacion, driveUrl } = datos; const t = now();
     for (const p of productos)
-      await appendRow('COMPRAS', { fecha: t, tipo: p.tipo, marca: p.marca||'', modelo: p.modelo||'', descripcion: p.descripcion||'', cantidad: String(p.cantidad||1), precio_unitario: p.precio_unitario||'0', rodado: p.rodado||'', ubicacion, estado: 'pendiente' });
+      await appendRow('COMPRAS', { fecha: t, tipo: p.tipo, marca: p.marca||'', modelo: p.modelo||'', descripcion: p.descripcion||'', cantidad: String(p.cantidad||1), precio_unitario: p.precio_unitario||'0', rodado: p.rodado||'', ubicacion, estado: 'pendiente', foto_drive: driveUrl||'' });
     await clearSession();
-    await tgSend(chatId, `✅ <b>${productos.length} producto(s)</b> guardados en la hoja <b>COMPRAS</b>. Revisalos y pasalos al stock cuando quieras.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    let confMsg = `✅ <b>${productos.length} producto(s)</b> guardados en la hoja <b>COMPRAS</b>. Revisalos y pasalos al stock cuando quieras.`;
+    if (driveUrl) confMsg += `\n💾 <a href="${driveUrl}">Ver factura en Drive</a>`;
+    await tgSend(chatId, confMsg, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
 
