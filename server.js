@@ -99,7 +99,7 @@ const HEADERS = {
   STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','factura_realizada'],
-  COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','ubicacion','estado','foto_drive']
+  COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive']
 };
 
 const CACHE_KEY = {
