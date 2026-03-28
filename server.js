@@ -12,7 +12,7 @@ const ADMIN_ID  = '5307233657';
 const GROQ_KEY  = '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';
 const SHEET_ID  = '1qTMua-CQOeR3HrbcoCwoJKi9kW8foeEnzQhxIRKd3ps';
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const DRIVE_FOLDER_ID = '1U-o_gMKtbxYDkWM_LWeZUTc2LdpxJuIP';
+const N8N_DRIVE_WEBHOOK = 'https://bicicleteria-n8n.fs5can.easypanel.host/webhook/drive-upload';
 
 const SA = {
   client_email: 'bot-bicicleteria@n8n-bicicleteria.iam.gserviceaccount.com',
@@ -21,7 +21,6 @@ const SA = {
 
 // ── Google Auth (JWT manual — sin dependencias extra) ──────────────────────────
 let _tokenCache = { token: null, expiresAt: 0 };
-let _driveTokenCache = { token: null, expiresAt: 0 };
 
 async function getToken() {
   if (_tokenCache.token && _tokenCache.expiresAt > Date.now() + 60000) return _tokenCache.token;
@@ -46,45 +45,16 @@ async function getToken() {
   return _tokenCache.token;
 }
 
-async function getDriveToken() {
-  if (_driveTokenCache.token && _driveTokenCache.expiresAt > Date.now() + 60000) return _driveTokenCache.token;
-  const now = Math.floor(Date.now() / 1000);
-  const hdr = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-  const cls = Buffer.from(JSON.stringify({
-    iss: SA.client_email,
-    scope: 'https://www.googleapis.com/auth/drive',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600, iat: now
-  })).toString('base64url');
-  const input = `${hdr}.${cls}`;
-  const signer = crypto.createSign('RSA-SHA256');
-  signer.update(input);
-  const sig = signer.sign(SA.private_key).toString('base64url');
-  const jwt = `${input}.${sig}`;
-  const r = await axios.post('https://oauth2.googleapis.com/token',
-    new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-  );
-  _driveTokenCache = { token: r.data.access_token, expiresAt: Date.now() + 3500000 };
-  return _driveTokenCache.token;
-}
-
 async function uploadToDrive(fileUrl, fileName, mimeType) {
   try {
-    const token = await getDriveToken();
     const fileResp = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-    const fileData = Buffer.from(fileResp.data);
-    const boundary = 'bicicleteria_boundary_xyz';
-    const metadata = JSON.stringify({ name: fileName, parents: [DRIVE_FOLDER_ID] });
-    const before = Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`);
-    const after  = Buffer.from(`\r\n--${boundary}--`);
-    const body   = Buffer.concat([before, fileData, after]);
+    const base64 = Buffer.from(fileResp.data).toString('base64');
     const resp = await axios.post(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-      body,
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}`, 'Content-Length': body.length } }
+      N8N_DRIVE_WEBHOOK,
+      { filename: fileName, data: base64 },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
     );
-    return `https://drive.google.com/file/d/${resp.data.id}/view`;
+    return resp.data.url || null;
   } catch (e) {
     console.error('[drive upload]', e.message);
     return null;
