@@ -267,6 +267,29 @@ async function processUpdate(update) {
     );
   };
 
+  const showProdDetail = async (p) => {
+    const stk = Number(p.stock_actual) || 0;
+    const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+    const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+    let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
+    msg += `${p.descripcion||''}\n`;
+    msg += `📍 ${p.ubicacion||'local'} | Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
+    msg += `💰 Máx: ${pmax} | Mín: ${pmin}`;
+    const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
+    if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
+    await tgSend(chatId, msg, kb);
+  };
+
+  const showProdList = async (res, query) => {
+    let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí uno para ver el detalle:`;
+    const kb = res.map(p => [{
+      text: `${p.marca}${p.modelo ? ' '+p.modelo : ''}${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''} — ${(p.descripcion||'').substring(0,20)}`,
+      callback_data: `prod_${p.numero_serie}`
+    }]);
+    kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
+    await tgSend(chatId, msg, kb);
+  };
+
   let user = findUser(userId);
   if (!user && userId === ADMIN_ID) {
     user = { telegram_id: userId, nombre: firstName, rol: 'administrador', activo: 'TRUE', fecha_alta: now() };
@@ -294,7 +317,6 @@ async function processUpdate(update) {
 
   // ── Búsqueda directa por voz ──────────────────────────────────────────────
   if (cb === 'voice_search' && text) {
-    // Buscar por frase completa primero, si no hay resultados buscar por palabras
     let res = findProd(text);
     if (!res.length) {
       const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
@@ -308,20 +330,10 @@ async function processUpdate(update) {
     await clearSession();
     if (!res.length) {
       await tgSend(chatId, `No encontré "${text}" en el stock.`, [[{ text: '🔍 Buscar de nuevo', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    } else if (res.length === 1) {
+      await showProdDetail(res[0]);
     } else {
-      if (res.length > 1) await tgSend(chatId, `📦 <b>${res.length} resultados para "${text}":</b>`);
-      for (const p of res) {
-        const stk = Number(p.stock_actual) || 0;
-        const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-        const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
-        let msg = `📦 <b>${p.marca} ${p.modelo}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
-        msg += `${p.descripcion||''} | ${p.ubicacion||'local'}\n`;
-        msg += `Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
-        msg += `💰 Máx: ${pmax} | Mín: ${pmin}`;
-        const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
-        if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
-        await tgSend(chatId, msg, kb);
-      }
+      await showProdList(res, text);
     }
     return;
   }
@@ -336,20 +348,10 @@ async function processUpdate(update) {
     const res = findProd(text); await clearSession();
     if (!res.length) {
       await tgSend(chatId, `No encontré "${text}" en el stock.`, [[{ text: '🔍 Buscar de nuevo', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    } else if (res.length === 1) {
+      await showProdDetail(res[0]);
     } else {
-      if (res.length > 1) await tgSend(chatId, `📦 <b>${res.length} resultados para "${text}":</b>`);
-      for (const p of res) {
-        const stk = Number(p.stock_actual) || 0;
-        const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-        const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
-        let msg = `📦 <b>${p.marca} ${p.modelo}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
-        msg += `${p.descripcion||''} | ${p.ubicacion||'local'}\n`;
-        msg += `Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
-        msg += `💰 Máx: ${pmax} | Mín: ${pmin}`;
-        const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
-        if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
-        await tgSend(chatId, msg, kb);
-      }
+      await showProdList(res, text);
     }
     return;
   }
@@ -735,6 +737,15 @@ async function processUpdate(update) {
     await tgSend(chatId,
       `✅ <b>${marca} ${modelo}${rodado ? ' R'+rodado : ''}</b> transferido a <b>${destino}</b>.`,
       [[{ text: '🔄 Otra transferencia', callback_data: 'transf2' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    return;
+  }
+
+  // ── Ver detalle de producto desde lista ───────────────────────────────────
+  if (cb.startsWith('prod_')) {
+    const serie = cb.replace('prod_', '');
+    const p = stock.find(s => s.numero_serie === serie);
+    if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
+    await showProdDetail(p);
     return;
   }
 
