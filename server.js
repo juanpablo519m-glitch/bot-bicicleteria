@@ -320,7 +320,7 @@ async function processUpdate(update) {
   const showVariants = async (variants) => {
     const first = variants[0];
     const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${first.rodado&&first.rodado!=='n/a'?' R'+first.rodado:''}`;
-    const kb = variants.slice(0, 8).map(p => {
+    const kb = variants.slice(0, 20).map(p => {
       let label = '';
       if (p.talle) label += 'T: '+p.talle;
       if (p.color) label += (label ? ' - ' : '') + p.color;
@@ -780,7 +780,7 @@ async function processUpdate(update) {
     }
     // Múltiples resultados — mostrar botones
     await saveSession('TRANSF2_PICK', { ...datos });
-    const kb = resultados.slice(0, 8).map(p => ([{
+    const kb = resultados.slice(0, 20).map(p => ([{
       text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.ubicacion})`,
       callback_data: `t2_pick_${p.numero_serie}`
     }]));
