@@ -68,7 +68,7 @@ const HEADERS = {
   MOVIMIENTOS_PENDIENTES: ['id_movimiento','tipo','estado','id_producto','numero_serie','cantidad','descripcion_movimiento','referencia_doc','hash_duplicado','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','factura_realizada'],
+  FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','mail','telefono','factura_realizada'],
   VENTAS_ACCESORIOS:      ['fecha','descripcion','precio','forma_pago','operador'],
   VENTAS_BICICLETAS:      ['fecha','descripcion','precio','forma_pago','operador'],
   COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado']
@@ -626,26 +626,31 @@ async function processUpdate(update) {
     await saveSession('FACT_DATA', {});
     await tgSend(chatId,
       '🧾 <b>Datos para factura</b>\nMandame todo en un mensaje con este formato:\n\n' +
-      '<code>Nombre, Domicilio, DNI/CUIT, Tipo (A o B), Descripción, Precio</code>\n\n' +
-      '<i>Ejemplo:</i>\n<code>Juan García, Av. Corrientes 123, 20-12345678-9, B, Trek Mountain Pro 29, 150000</code>',
+      '<code>Nombre, Domicilio, DNI/CUIT, Tipo (A o B), Descripción, Precio, Mail, Teléfono</code>\n\n' +
+      '<i>Ejemplo:</i>\n<code>Juan García, Av. Corrientes 123, 20-12345678-9, B, Trek Mountain Pro 29, 150000, juan@mail.com, 1155667788</code>\n' +
+      '<i>Mail y teléfono son opcionales.</i>',
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'FACT_DATA' && text) {
     const p = text.split(',').map(x => x.trim());
-    if (p.length < 6) { await tgSend(chatId, 'Faltan datos. Mandá los 6 campos separados por coma:\n<code>Nombre, Domicilio, DNI/CUIT, Tipo, Descripción, Precio</code>'); return; }
+    if (p.length < 6) { await tgSend(chatId, 'Faltan datos. Mandá al menos los 6 campos separados por coma:\n<code>Nombre, Domicilio, DNI/CUIT, Tipo, Descripción, Precio</code>'); return; }
     const [nombre, domicilio, dni_cuit, tipo, descripcion, precioRaw] = p;
+    const mail = p[6] || '';
+    const telefono = p[7] || '';
     const precio     = (precioRaw||'0').trim().replace(/\./g,'').replace(',','.');
     const tipoUpper  = (tipo||'').toUpperCase();
     if (!['A','B'].includes(tipoUpper)) { await tgSend(chatId, 'El tipo debe ser A o B. Reintentá.'); return; }
-    await saveSession('FACT_CONF', { nombre, domicilio, dni_cuit, tipo: tipoUpper, descripcion, precio });
-    await tgSend(chatId, `🧾 <b>Confirmar datos:</b>\nCliente: ${nombre}\nDomicilio: ${domicilio}\nDNI/CUIT: ${dni_cuit}\nTipo: ${tipoUpper}\nDescripción: ${descripcion}\nPrecio: $${precio}`,
+    await saveSession('FACT_CONF', { nombre, domicilio, dni_cuit, tipo: tipoUpper, descripcion, precio, mail, telefono });
+    await tgSend(chatId,
+      `🧾 <b>Confirmar datos:</b>\nCliente: ${nombre}\nDomicilio: ${domicilio}\nDNI/CUIT: ${dni_cuit}\nTipo: ${tipoUpper}\nDescripción: ${descripcion}\nPrecio: $${precio}` +
+      (mail ? `\nMail: ${mail}` : '') + (telefono ? `\nTeléfono: ${telefono}` : ''),
       [[{ text: '✅ Confirmar', callback_data: 'fact_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (cb === 'fact_ok' && estado === 'FACT_CONF') {
     const d = datos;
-    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), factura_realizada: 'FALSE' });
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), factura_realizada: 'FALSE', mail: d.mail||'', telefono: d.telefono||'' });
     await clearSession();
     await tgSend(chatId, '✅ Datos de factura guardados. Revisá la hoja FACTURAS en Google Sheets.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
@@ -907,19 +912,22 @@ async function processUpdate(update) {
     await tgSend(chatId,
       `💰 <b>Registrar Venta</b>\n📦 ${desc}\n\n` +
       `Mandame los datos separados por coma:\n` +
-      `<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio${precioHint}, Forma de pago</code>\n\n` +
-      `<i>Ejemplo:</i>\n<code>Juan Pérez, Av. Corrientes 123, 12345678, B, 280000, Efectivo</code>`,
+      `<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio${precioHint}, Forma de pago, Mail, Teléfono</code>\n\n` +
+      `<i>Ejemplo:</i>\n<code>Juan Pérez, Av. Corrientes 123, 12345678, B, 280000, Efectivo, juan@mail.com, 1155667788</code>\n` +
+      `<i>Mail y teléfono son opcionales, podés dejarlos vacíos.</i>`,
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'VENTA_DATA' && text) {
-    const parts = text.split(',').map(l => l.trim()).filter(Boolean);
+    const parts = text.split(',').map(l => l.trim());
     if (parts.length < 6) {
-      await tgSend(chatId, '❌ Faltan datos. Mandame los 6 separados por coma:\nNombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio, Forma de pago');
+      await tgSend(chatId, '❌ Faltan datos. Mandame al menos los 6 separados por coma:\nNombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio, Forma de pago');
       return;
     }
     const [nombre, domicilio, dni_cuit, tipoRaw, precio, forma_pago] = parts;
-    await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo: tipoRaw.toUpperCase(), precio, forma_pago });
+    const mail = parts[6] || '';
+    const telefono = parts[7] || '';
+    await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo: tipoRaw.toUpperCase(), precio, forma_pago, mail, telefono });
     await tgSend(chatId,
       `💰 <b>Confirmar venta:</b>\n\n` +
       `📦 ${datos.descripcion}\n` +
@@ -927,28 +935,30 @@ async function processUpdate(update) {
       `🏠 ${domicilio}\n` +
       `🪪 ${dni_cuit}\n` +
       `🧾 Factura tipo ${tipoRaw.toUpperCase()}\n` +
-      `💵 $${precio} — ${forma_pago}`,
+      `💵 $${precio} — ${forma_pago}` +
+      (mail ? `\n📧 ${mail}` : '') +
+      (telefono ? `\n📞 ${telefono}` : ''),
       [[{ text: '✅ Confirmar', callback_data: 'venta_ok' }, { text: '✏️ Editar', callback_data: 'venta_edit' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (cb === 'venta_edit' && estado === 'VENTA_CONF') {
-    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago } = datos;
+    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
     const precioHint = p?.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR')})` : '';
     await saveSession('VENTA_DATA', { numero_serie, descripcion });
     await tgSend(chatId,
       `✏️ <b>Editar datos</b>\n📦 ${descripcion}\n\n` +
       `Mandame los datos separados por coma:\n` +
-      `<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio${precioHint}, Forma de pago</code>\n\n` +
-      `<i>Datos anteriores:</i>\n<code>${nombre}, ${domicilio}, ${dni_cuit}, ${tipo}, ${precio}, ${forma_pago}</code>`,
+      `<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio${precioHint}, Forma de pago, Mail, Teléfono</code>\n\n` +
+      `<i>Datos anteriores:</i>\n<code>${nombre}, ${domicilio}, ${dni_cuit}, ${tipo}, ${precio}, ${forma_pago}, ${mail||''}, ${telefono||''}</code>`,
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (cb === 'venta_ok' && estado === 'VENTA_CONF') {
-    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago } = datos;
+    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
     const newStock = Math.max(0, (Number(p?.stock_actual) || 1) - 1);
-    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie });
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
     await clearSession();
     await tgSend(chatId,
