@@ -859,7 +859,20 @@ async function processUpdate(update) {
       `🪪 ${dni_cuit}\n` +
       `🧾 Factura tipo ${tipoRaw.toUpperCase()}\n` +
       `💵 $${precio} — ${forma_pago}`,
-      [[{ text: '✅ Confirmar', callback_data: 'venta_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      [[{ text: '✅ Confirmar', callback_data: 'venta_ok' }, { text: '✏️ Editar', callback_data: 'venta_edit' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'venta_edit' && estado === 'VENTA_CONF') {
+    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago } = datos;
+    const p = cache.stock.find(p => p.numero_serie === numero_serie);
+    const precioHint = p?.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR')})` : '';
+    await saveSession('VENTA_DATA', { numero_serie, descripcion });
+    await tgSend(chatId,
+      `✏️ <b>Editar datos</b>\n📦 ${descripcion}\n\n` +
+      `Mandame los datos separados por coma:\n` +
+      `<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio${precioHint}, Forma de pago</code>\n\n` +
+      `<i>Datos anteriores:</i>\n<code>${nombre}, ${domicilio}, ${dni_cuit}, ${tipo}, ${precio}, ${forma_pago}</code>`,
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (cb === 'venta_ok' && estado === 'VENTA_CONF') {
