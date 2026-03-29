@@ -707,18 +707,22 @@ async function processUpdate(update) {
   if (estado === 'FACT_PROV_TEXT' && text && !cb) {
     const lineas = text.split('\n').map(l => l.trim()).filter(Boolean);
     const productos = [];
+    const TIPOS_VALIDOS = ['bicicleta','cuadro','accesorio','otro'];
     for (const linea of lineas) {
       const p = linea.split(',').map(x => x.trim());
-      if (p.length < 4) continue;
-      productos.push({
-        tipo: p[0] || 'otro',
-        marca: p[1] || '',
-        modelo: p[2] || '',
-        descripcion: p[3] || '',
-        cantidad: parseInt(p[4]) || 1,
-        precio_unitario: p[5] || '0',
-        rodado: p[6] || ''
-      });
+      if (p.length < 3) continue;
+      // Si el primer campo es un tipo válido, usarlo; sino asumir 'bicicleta' y no consumir el campo
+      let idx = 0;
+      const tipo = TIPOS_VALIDOS.includes(p[0].toLowerCase()) ? p[idx++].toLowerCase() : 'bicicleta';
+      const marca = p[idx++] || '';
+      const modelo = p[idx++] || '';
+      const descripcion = p[idx++] || '';
+      const cantidad = parseInt(p[idx++]) || 1;
+      // El precio puede tener puntos de miles (100.000) — eliminarlos y tomar solo dígitos
+      const precioRaw = (p[idx++] || '0').replace(/\./g, '').replace(',', '.');
+      const precio_unitario = precioRaw || '0';
+      const rodado = p[idx++] || '';
+      productos.push({ tipo, marca, modelo, descripcion, cantidad, precio_unitario, rodado });
     }
     if (!productos.length) {
       await tgSend(chatId, '❌ No pude leer los productos. Revisá el formato:\n<code>Tipo, Marca, Modelo, Descripción, Cantidad, Precio, Rodado</code>\nUn producto por línea.');
