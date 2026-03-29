@@ -824,19 +824,19 @@ async function processUpdate(update) {
     await saveSession('VENTA_DATA', { numero_serie: serie, descripcion: desc });
     await tgSend(chatId,
       `💰 <b>Registrar Venta</b>\n📦 ${desc}\n\n` +
-      `Mandame los datos del cliente, uno por línea:\n\n` +
-      `<code>Nombre\nDomicilio\nDNI o CUIT\nTipo factura (A/B/C)\nPrecio de venta${precioHint}\nForma de pago</code>\n\n` +
-      `<i>Ejemplo:</i>\n<code>Juan Pérez\nAv. Corrientes 123\n12345678\nB\n280000\nEfectivo</code>`,
+      `Mandame los datos separados por coma:\n` +
+      `<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio${precioHint}, Forma de pago</code>\n\n` +
+      `<i>Ejemplo:</i>\n<code>Juan Pérez, Av. Corrientes 123, 12345678, B, 280000, Efectivo</code>`,
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'VENTA_DATA' && text) {
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 6) {
-      await tgSend(chatId, '❌ Faltan datos. Necesito 6 líneas:\nNombre\nDomicilio\nDNI/CUIT\nTipo (A/B/C)\nPrecio\nForma de pago');
+    const parts = text.split(',').map(l => l.trim()).filter(Boolean);
+    if (parts.length < 6) {
+      await tgSend(chatId, '❌ Faltan datos. Mandame los 6 separados por coma:\nNombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio, Forma de pago');
       return;
     }
-    const [nombre, domicilio, dni_cuit, tipoRaw, precio, forma_pago] = lines;
+    const [nombre, domicilio, dni_cuit, tipoRaw, precio, forma_pago] = parts;
     await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo: tipoRaw.toUpperCase(), precio, forma_pago });
     await tgSend(chatId,
       `💰 <b>Confirmar venta:</b>\n\n` +
