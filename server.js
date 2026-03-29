@@ -873,7 +873,11 @@ async function processUpdate(update) {
     msg += p.ficha_tecnica;
     msg += `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n`;
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
-    await tgSend(chatId, msg, [[{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    const kbFicha = [];
+    const stk2 = Number(p.stock_actual) || 0;
+    if (stk2 > 0) kbFicha.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
+    kbFicha.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
+    await tgSend(chatId, msg, kbFicha);
     return;
   }
 
