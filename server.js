@@ -319,7 +319,7 @@ async function processUpdate(update) {
   const showProdList = async (res, query) => {
     const groups = {};
     res.forEach(p => {
-      const key = `${p.marca}|${p.modelo||''}|${p.rodado||''}`;
+      const key = `${(p.marca||'').toLowerCase()}|${(p.modelo||'').toLowerCase()}|${(p.rodado||'').toLowerCase()}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
     });
@@ -809,7 +809,7 @@ async function processUpdate(update) {
     const refSerie = cb.slice(4);
     const ref = cache.stock.find(p => p.numero_serie === refSerie);
     if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
-    const variants = cache.stock.filter(p => p.marca === ref.marca && (p.modelo||'') === (ref.modelo||'') && (p.rodado||'') === (ref.rodado||''));
+    const variants = cache.stock.filter(p => (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
     await showVariants(variants);
     return;
   }
