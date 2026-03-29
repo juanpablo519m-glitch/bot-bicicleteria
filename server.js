@@ -68,7 +68,7 @@ const HEADERS = {
   MOVIMIENTOS_PENDIENTES: ['id_movimiento','tipo','estado','id_producto','numero_serie','cantidad','descripcion_movimiento','referencia_doc','hash_duplicado','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','factura_realizada','forma_pago'],
+  FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','factura_realizada','forma_pago','numero_serie'],
   COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado']
 };
 
@@ -892,7 +892,7 @@ async function processUpdate(update) {
     const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago } = datos;
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
     const newStock = Math.max(0, (Number(p?.stock_actual) || 1) - 1);
-    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago });
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
     await clearSession();
     await tgSend(chatId,
