@@ -279,8 +279,10 @@ async function processUpdate(update) {
   const findSesion= uid => sesiones.find(s => String(s.telegram_id) === String(uid)) || null;
   const findProd  = q => {
     return stock.filter(p =>
-      fuzzy(q, p.numero_serie||'') || fuzzy(q, p.marca||'') ||
-      fuzzy(q, p.modelo||'')       || fuzzy(q, p.descripcion||'')
+      (Number(p.stock_actual) || 0) > 0 &&
+      (p.estado_unidad || '').toLowerCase() !== 'vendido' &&
+      (fuzzy(q, p.numero_serie||'') || fuzzy(q, p.marca||'') ||
+       fuzzy(q, p.modelo||'')       || fuzzy(q, p.descripcion||''))
     );
   };
 
