@@ -320,7 +320,7 @@ async function processUpdate(update) {
   const showVariants = async (variants) => {
     const first = variants[0];
     const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${first.rodado&&first.rodado!=='n/a'?' R'+first.rodado:''}`;
-    const kb = variants.slice(0, 20).map(p => {
+    const kb = variants.map(p => {
       let label = '';
       if (p.talle) label += 'T: '+p.talle;
       if (p.color) label += (label ? ' - ' : '') + p.color;
@@ -341,7 +341,7 @@ async function processUpdate(update) {
     const groupKeys = Object.keys(groups);
     if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]]); return; }
     let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí un modelo:`;
-    const kb = groupKeys.slice(0, 20).map(key => {
+    const kb = groupKeys.map(key => {
       const variants = groups[key];
       const p = variants[0];
       const nombre = `${p.marca}${p.modelo ? ' '+p.modelo : ''}${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}`;
