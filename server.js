@@ -779,8 +779,13 @@ async function processUpdate(update) {
       return;
     }
     // Múltiples resultados — mostrar botones
+    if (resultados.length > 20) {
+      await tgSend(chatId, `🔍 Encontré ${resultados.length} resultados, es demasiado para mostrar. Buscá con más detalle (ej: marca + modelo + rodado):`,
+        [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      return;
+    }
     await saveSession('TRANSF2_PICK', { ...datos });
-    const kb = resultados.slice(0, 20).map(p => ([{
+    const kb = resultados.map(p => ([{
       text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.ubicacion})`,
       callback_data: `t2_pick_${p.numero_serie}`
     }]));
