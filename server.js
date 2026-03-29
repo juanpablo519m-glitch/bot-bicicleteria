@@ -811,7 +811,7 @@ async function processUpdate(update) {
     const refSerie = cb.slice(4);
     const ref = cache.stock.find(p => p.numero_serie === refSerie);
     if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
-    const variants = cache.stock.filter(p => (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
+    const variants = cache.stock.filter(p => (Number(p.stock_actual)||0) > 0 && (p.estado_unidad||'').toLowerCase() !== 'vendido' && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
     await showVariants(variants);
     return;
   }
