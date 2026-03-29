@@ -122,7 +122,7 @@ async function appendRow(sheetName, data) {
   getToken().then(token => {
     const values = [HEADERS[sheetName].map(h => String(data[h] ?? ''))];
     return axios.post(
-      `${SHEETS_BASE}/${SHEET_ID}/values/${encodeURIComponent(sheetName+'!A:A')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A:A:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       { values }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
   }).catch(e => console.error('[bg append]', sheetName, e.message));
