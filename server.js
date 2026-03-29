@@ -66,9 +66,9 @@ const HEADERS = {
   SESIONES:               ['telegram_id','estado','datos','ts'],
   USUARIOS:               ['telegram_id','nombre','rol','activo','fecha_alta'],
   MOVIMIENTOS_PENDIENTES: ['id_movimiento','tipo','estado','id_producto','numero_serie','cantidad','descripcion_movimiento','referencia_doc','hash_duplicado','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url'],
+  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','factura_realizada'],
+  FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','factura_realizada','forma_pago'],
   COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado']
 };
 
@@ -289,10 +289,12 @@ async function processUpdate(update) {
     const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
     const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
     let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
+    if (p.talle || p.color) msg += `${p.talle ? 'Talle: '+p.talle : ''}${p.talle && p.color ? ' | ' : ''}${p.color ? 'Color: '+p.color : ''}\n`;
     msg += `${p.descripcion||''}\n`;
     msg += `📍 ${p.ubicacion||'local'} | Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
+    if (stk > 0) kb.unshift([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
     if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
@@ -300,12 +302,37 @@ async function processUpdate(update) {
     await tgSend(chatId, msg, kb);
   };
 
+  const showVariants = async (variants) => {
+    const first = variants[0];
+    const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${first.rodado&&first.rodado!=='n/a'?' R'+first.rodado:''}`;
+    const kb = variants.slice(0, 8).map(p => {
+      let label = '';
+      if (p.talle) label += 'T: '+p.talle;
+      if (p.color) label += (label ? ' - ' : '') + p.color;
+      if (!label) label = p.descripcion ? p.descripcion.substring(0, 25) : p.numero_serie;
+      return [{ text: label, callback_data: `prod_${p.numero_serie}` }];
+    });
+    kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
+    await tgSend(chatId, `📦 <b>${titulo}</b> — ${variants.length} variante(s)\n¿Cuál buscás?`, kb);
+  };
+
   const showProdList = async (res, query) => {
-    let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí uno para ver el detalle:`;
-    const kb = res.map(p => [{
-      text: `${p.marca}${p.modelo ? ' '+p.modelo : ''}${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''} — ${(p.descripcion||'').substring(0,20)}`,
-      callback_data: `prod_${p.numero_serie}`
-    }]);
+    const groups = {};
+    res.forEach(p => {
+      const key = `${p.marca}|${p.modelo||''}|${p.rodado||''}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(p);
+    });
+    const groupKeys = Object.keys(groups);
+    if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]]); return; }
+    let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí un modelo:`;
+    const kb = groupKeys.slice(0, 8).map(key => {
+      const variants = groups[key];
+      const p = variants[0];
+      const nombre = `${p.marca}${p.modelo ? ' '+p.modelo : ''}${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}`;
+      if (variants.length === 1) return [{ text: nombre, callback_data: `prod_${p.numero_serie}` }];
+      return [{ text: `${nombre} (${variants.length})`, callback_data: `grp_${p.numero_serie}` }];
+    });
     kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
     await tgSend(chatId, msg, kb);
   };
@@ -774,6 +801,64 @@ async function processUpdate(update) {
     const p = stock.find(s => s.numero_serie === serie);
     if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     await showProdDetail(p);
+    return;
+  }
+
+  // ── Ver variantes de un modelo ────────────────────────────────────────────
+  if (cb.startsWith('grp_')) {
+    const refSerie = cb.slice(4);
+    const ref = cache.stock.find(p => p.numero_serie === refSerie);
+    if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
+    const variants = cache.stock.filter(p => p.marca === ref.marca && (p.modelo||'') === (ref.modelo||'') && (p.rodado||'') === (ref.rodado||''));
+    await showVariants(variants);
+    return;
+  }
+
+  // ── Registrar venta ────────────────────────────────────────────────────────
+  if (cb.startsWith('vender_')) {
+    const serie = cb.slice(7);
+    const p = cache.stock.find(p => p.numero_serie === serie);
+    if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
+    const desc = [p.marca, p.modelo, p.rodado ? 'R'+p.rodado : '', p.talle ? 'T'+p.talle : '', p.color].filter(Boolean).join(' ');
+    const precioHint = p.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR')})` : '';
+    await saveSession('VENTA_DATA', { numero_serie: serie, descripcion: desc });
+    await tgSend(chatId,
+      `💰 <b>Registrar Venta</b>\n📦 ${desc}\n\n` +
+      `Mandame los datos del cliente, uno por línea:\n\n` +
+      `<code>Nombre\nDomicilio\nDNI o CUIT\nTipo factura (A/B/C)\nPrecio de venta${precioHint}\nForma de pago</code>\n\n` +
+      `<i>Ejemplo:</i>\n<code>Juan Pérez\nAv. Corrientes 123\n12345678\nB\n280000\nEfectivo</code>`,
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (estado === 'VENTA_DATA' && text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 6) {
+      await tgSend(chatId, '❌ Faltan datos. Necesito 6 líneas:\nNombre\nDomicilio\nDNI/CUIT\nTipo (A/B/C)\nPrecio\nForma de pago');
+      return;
+    }
+    const [nombre, domicilio, dni_cuit, tipoRaw, precio, forma_pago] = lines;
+    await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo: tipoRaw.toUpperCase(), precio, forma_pago });
+    await tgSend(chatId,
+      `💰 <b>Confirmar venta:</b>\n\n` +
+      `📦 ${datos.descripcion}\n` +
+      `👤 ${nombre}\n` +
+      `🏠 ${domicilio}\n` +
+      `🪪 ${dni_cuit}\n` +
+      `🧾 Factura tipo ${tipoRaw.toUpperCase()}\n` +
+      `💵 $${precio} — ${forma_pago}`,
+      [[{ text: '✅ Confirmar', callback_data: 'venta_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'venta_ok' && estado === 'VENTA_CONF') {
+    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago } = datos;
+    const p = cache.stock.find(p => p.numero_serie === numero_serie);
+    const newStock = Math.max(0, (Number(p?.stock_actual) || 1) - 1);
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago });
+    await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
+    await clearSession();
+    await tgSend(chatId,
+      `✅ <b>Venta registrada</b>\n\n📦 ${descripcion}\n👤 ${nombre}\n💵 $${precio} — ${forma_pago}\n\n📋 Factura pendiente en Google Sheets.`,
+      [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
 
