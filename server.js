@@ -6,17 +6,17 @@ const crypto  = require('crypto');
 
 // ── Constantes ─────────────────────────────────────────────────────────────────
 const PORT      = process.env.PORT || 3000;
-const BOT_TOKEN = '8794560347:AAFLk7ZT6ktdnUex2RvZHYaXZuNhJ8eVVqY';
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const TG        = `https://api.telegram.org/bot${BOT_TOKEN}`;
-const ADMIN_ID  = '5307233657';
-const GROQ_KEY  = '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';
-const SHEET_ID  = '1qTMua-CQOeR3HrbcoCwoJKi9kW8foeEnzQhxIRKd3ps';
+const ADMIN_ID  = process.env.ADMIN_ID || '5307233657';
+const GROQ_KEY  = process.env.GROQ_KEY;
+const SHEET_ID  = process.env.SHEET_ID;
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
-const N8N_DRIVE_WEBHOOK = 'https://bicicleteria-n8n.fs5can.easypanel.host/webhook/drive-upload';
+const N8N_DRIVE_WEBHOOK = process.env.N8N_DRIVE_WEBHOOK || 'https://bicicleteria-n8n.fs5can.easypanel.host/webhook/drive-upload';
 
 const SA = {
-  client_email: 'bot-bicicleteria@n8n-bicicleteria.iam.gserviceaccount.com',
-  private_key: '-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDKSu4lhbVeHpZX\nakycBHWHC0X+cuVuLV1fuPP03n/drRgKTLGXEHB+GcC3Q6wOUjXrI3RoWbjTpyDj\nArIW0gUEGfs7/ljbwM6Dx8/oJS4Z+oq2Sf1hnYTZaQ2Xqz03ARbUagyu5LgJw0qR\nBCDm9RaUtTqa6d/2dk/13lCLmvGb1R6eMduXX2StNoATWfZjJZxu77WiJHVuuhx/\npTsNlZO2XfDIGeEXBSRG0c4CoBIKea9H2C6CTluMz7MxGzyk6rITZVH/cK6ngb0q\ndXwN6YViXC2cA4ajf0oGO4IX58VOKNEPEbnYdBlAz5Nqpk8Q3FihF/EqpIVCA6hD\n/DhHQpHLAgMBAAECggEANmRmWy10Ak4cI34AAlVKmpiD5fJT0UeeWy4aXmVzIRI5\nLA/KEnHHpYhcIoquGR2uxL5APwyc30AJXjCr3On0klFAFbYCg3f4r0NLGkLg/fg5\nUuFbIWOexGx0TKss5vzCfDPVnDMAbxOVGZ/wDtmojCyciOnIn/bY8iWoJ5luTHVL\nGjsS+mOTzCYbNTIIoqhcs0Fmws3Val/Yd2q8u4ucqa6Cve1KMjTnXSrEAapL+W3B\ngSEcQc/eK36jES9t0a2FPY/dry4A06LvKZGdAlu/ptoyVzoggzH7Jr57TaPMkE8b\nR+6iWZQG+ZwuE0Bv/As5xyegLaWZzta0kCdxvrR09QKBgQD3hvGvdGJWV65UUg3E\nQX50tENx19tBjIA6XwfyK+9DFD+6FwcbKDKPfv6t7BptHHUFaJbEoR3Woq72yHZe\nj9R8ILwy/5RqmGshCEH+5O2fatzU9Qwf2xHvPysab3eecSELNRU7m6MeCWfykkW9\nT3tWGed2XowwyqOCoYWG2GtTxQKBgQDRN5nvovZXa3LH7G1I/sszU+51xuvheOV8\npcW8I+I9HkioTnkrgOAc2nKFVSOq2LXB3cPHlaENE9b4e8FZWTHqj/rI9ziRSyCm\nxmzzvi/itC998E2A9QjaqWdhsUxq/yzeOJ77PtKsSuunRlR6l1rAQv2OIw3IkpfR\nkJguUXhYTwKBgGOjeXRkSBVzlCQzJ4GBz7KQwbl457SaJx/YEy3Dy7tX0lNJY73l\nz3x95W0DZpvXYa+8qzwZkxZMRFvo0+U6xpD06G0q/oZuNmmElnRRmOmcLaq3vZqx\nJ6YD6ojop+Eqrt+BDbwB6YZ0yNgXU2ViMka1hLvcUVhuqaUy+boPMhz1AoGAXfKe\n0GoYPpdEWpxDUtT/gFP/L6ocwAne20NBcMOYUyOnMtTSOoPLn4lEhbT+qDhaHe0s\nfhIl2M6A6OIBp9KSxKbU0auaHjxjNCDESgusSxvoe6AN3Yuq5y3M+6R3EVD23+8D\nDQVf6vhVq668PrR6jv1GCK6bAOc6/2Lzw1DYPqcCgYAk3YiUnRTDWd1/HzUZk736\nrbqbg6cjUueXpUD6xptM8y+XGAxaCEvY0OK39RzovIGdXpbUj0zB1bWY7xmJRk2P\nIdLiZEzjRv3mMIkQq0JBL6NM8hH90K10tN1pHoBm7MKJjt0ZatP40Z4xliV/XHL/\nLepE03P0AeXncVlp7qjhyQ==\n-----END PRIVATE KEY-----\n'
+  client_email: process.env.SA_EMAIL,
+  private_key: (process.env.SA_PRIVATE_KEY || '').replace(/\\n/g, '\n')
 };
 
 // ── Google Auth (JWT manual — sin dependencias extra) ──────────────────────────
