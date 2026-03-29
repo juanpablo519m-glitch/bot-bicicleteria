@@ -802,7 +802,18 @@ async function processUpdate(update) {
     const serie = cb.replace('prod_', '');
     const p = stock.find(s => s.numero_serie === serie);
     if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
-    await showProdDetail(p);
+    if (p.ficha_tecnica) {
+      // Ir directo a ficha técnica
+      const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+      const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+      let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${p.ficha_tecnica}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
+      const kbF = [];
+      if ((Number(p.stock_actual)||0) > 0) kbF.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
+      kbF.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
+      await tgSend(chatId, msg, kbF);
+    } else {
+      await showProdDetail(p);
+    }
     return;
   }
 
