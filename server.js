@@ -119,10 +119,23 @@ async function appendRow(sheetName, data) {
     cache[ck].push({ ...data, _rowNum: maxRow + 1 });
   }
   // Escribir a Google Sheets en segundo plano
-  getToken().then(token => {
-    const values = [HEADERS[sheetName].map(h => String(data[h] ?? ''))];
-    return axios.post(
-      `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A:A:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+  // Usa GET en col A para encontrar la primera fila vacía (evita saltar checkboxes pre-cargados)
+  getToken().then(async token => {
+    const hdrs = HEADERS[sheetName];
+    const endCol = String.fromCharCode(64 + hdrs.length);
+    const values = [hdrs.map(h => String(data[h] ?? ''))];
+    const r = await axios.get(
+      `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A:A`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const colA = r.data.values || [[]];
+    // Buscar primera fila vacía después del header
+    let nextRow = colA.length + 1;
+    for (let i = 1; i < colA.length; i++) {
+      if (!colA[i] || !colA[i][0]) { nextRow = i + 1; break; }
+    }
+    return axios.put(
+      `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A${nextRow}:${endCol}${nextRow}?valueInputOption=USER_ENTERED`,
       { values }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
   }).catch(e => console.error('[bg append]', sheetName, e.message));
