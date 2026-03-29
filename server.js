@@ -69,6 +69,8 @@ const HEADERS = {
   STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','factura_realizada'],
+  VENTAS_ACCESORIOS:      ['fecha','descripcion','precio','forma_pago','operador'],
+  VENTAS_BICICLETAS:      ['fecha','descripcion','precio','forma_pago','operador'],
   COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado']
 };
 
@@ -231,6 +233,7 @@ function fuzzy(query, target) {
 function mainMenu(rol) {
   const kb = [[{ text: '📦 Consultar Stock', callback_data: 'stock' }]];
   if (['operador','aprobador','administrador'].includes(rol)) {
+    kb.push([{ text: '💰 Registrar Venta', callback_data: 'venta_rapida' }]);
     kb.push([{ text: '🔄 Transferir Producto', callback_data: 'transf2' }]);
     kb.push([{ text: '📋 Registrar Movimiento', callback_data: 'movimiento' }]);
   }
@@ -837,6 +840,59 @@ async function processUpdate(update) {
     if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
     const variants = cache.stock.filter(p => (Number(p.stock_actual)||0) > 0 && (p.estado_unidad||'').toLowerCase() !== 'vendido' && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
     await showVariants(variants);
+    return;
+  }
+
+  // ── Venta rápida (accesorios / bicicletas sin stock) ──────────────────────
+  if (cb === 'venta_rapida') {
+    await tgSend(chatId, '💰 <b>Registrar Venta</b>\n¿Qué tipo?',
+      [[{ text: '🔧 Accesorio', callback_data: 'vr_acc' }, { text: '🚲 Bicicleta', callback_data: 'vr_bici' }],
+       [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'vr_acc' || cb === 'vr_bici') {
+    const tipo = cb === 'vr_acc' ? 'accesorio' : 'bicicleta';
+    await saveSession('VR_DATA', { tipo });
+    await tgSend(chatId,
+      `💰 <b>Venta de ${tipo}</b>\n\nMandame los datos separados por coma:\n` +
+      `<code>Descripción, Precio, Forma de pago</code>\n\n` +
+      `<i>Ejemplo:</i>\n<code>Casco Nutcase talle M, 15000, Efectivo</code>`,
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (estado === 'VR_DATA' && text) {
+    const parts = text.split(',').map(p => p.trim()).filter(Boolean);
+    if (parts.length < 3) {
+      await tgSend(chatId, '❌ Faltan datos. Necesito: Descripción, Precio, Forma de pago');
+      return;
+    }
+    const [descripcion, precio, forma_pago] = parts;
+    const { tipo } = datos;
+    await saveSession('VR_CONF', { tipo, descripcion, precio, forma_pago });
+    await tgSend(chatId,
+      `💰 <b>Confirmar venta:</b>\n\n` +
+      `📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
+      [[{ text: '✅ Confirmar', callback_data: 'vr_ok' }, { text: '✏️ Editar', callback_data: 'vr_edit' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'vr_edit' && estado === 'VR_CONF') {
+    const { tipo, descripcion, precio, forma_pago } = datos;
+    await saveSession('VR_DATA', { tipo });
+    await tgSend(chatId,
+      `✏️ <b>Editar venta</b>\n\nMandame los datos separados por coma:\n` +
+      `<code>Descripción, Precio, Forma de pago</code>\n\n` +
+      `<i>Datos anteriores:</i>\n<code>${descripcion}, ${precio}, ${forma_pago}</code>`,
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'vr_ok' && estado === 'VR_CONF') {
+    const { tipo, descripcion, precio, forma_pago } = datos;
+    const sheet = tipo === 'accesorio' ? 'VENTAS_ACCESORIOS' : 'VENTAS_BICICLETAS';
+    await appendRow(sheet, { fecha: now(), descripcion, precio, forma_pago, operador: user.nombre });
+    await clearSession();
+    await tgSend(chatId,
+      `✅ <b>Venta registrada</b>\n📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
+      [[{ text: '💰 Otra venta', callback_data: 'venta_rapida' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
 
