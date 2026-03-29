@@ -326,7 +326,7 @@ async function processUpdate(update) {
     const groupKeys = Object.keys(groups);
     if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]]); return; }
     let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí un modelo:`;
-    const kb = groupKeys.slice(0, 8).map(key => {
+    const kb = groupKeys.slice(0, 20).map(key => {
       const variants = groups[key];
       const p = variants[0];
       const nombre = `${p.marca}${p.modelo ? ' '+p.modelo : ''}${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}`;
