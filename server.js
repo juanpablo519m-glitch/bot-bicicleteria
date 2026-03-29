@@ -683,8 +683,52 @@ async function processUpdate(update) {
 
   // ── OCR: Carga por factura de proveedor ───────────────────────────────────
   if (cb === 'fact_prov' && rol === 'administrador') {
+    await tgSend(chatId, '📦 <b>Carga por factura de proveedor</b>\n¿Cómo querés cargar los productos?',
+      [[{ text: '📷 Foto / PDF', callback_data: 'fact_prov_foto' }, { text: '✏️ Escribir manualmente', callback_data: 'fact_prov_texto' }],
+       [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'fact_prov_foto' && rol === 'administrador') {
     await saveSession('FACT_PROV_WAIT', {});
-    await tgSend(chatId, '📷 <b>Carga por factura de proveedor</b>\nMandame una foto o PDF de la factura. La IA detectará los productos automáticamente.', [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    await tgSend(chatId, '📷 <b>Carga por foto/PDF</b>\nMandame una foto o PDF de la factura. La IA detectará los productos automáticamente.', [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'fact_prov_texto' && rol === 'administrador') {
+    await saveSession('FACT_PROV_TEXT', {});
+    await tgSend(chatId,
+      '✏️ <b>Carga manual</b>\nMandame los productos, <b>uno por línea</b>, con este formato:\n\n' +
+      '<code>Tipo, Marca, Modelo, Descripción, Cantidad, Precio unitario, Rodado</code>\n\n' +
+      '<i>Tipos:</i> bicicleta, cuadro, accesorio, otro\n' +
+      '<i>Rodado:</i> número para bicis (26, 29), dejalo vacío para accesorios\n\n' +
+      '<i>Ejemplo:</i>\n<code>bicicleta, Raleigh, Scout 2.0, MTB aluminio doble disco, 2, 150000, 26\naccesorio, Bell, Casco Nutcase, Casco talle M, 3, 15000,</code>',
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (estado === 'FACT_PROV_TEXT' && text && !cb) {
+    const lineas = text.split('\n').map(l => l.trim()).filter(Boolean);
+    const productos = [];
+    for (const linea of lineas) {
+      const p = linea.split(',').map(x => x.trim());
+      if (p.length < 4) continue;
+      productos.push({
+        tipo: p[0] || 'otro',
+        marca: p[1] || '',
+        modelo: p[2] || '',
+        descripcion: p[3] || '',
+        cantidad: parseInt(p[4]) || 1,
+        precio_unitario: p[5] || '0',
+        rodado: p[6] || ''
+      });
+    }
+    if (!productos.length) {
+      await tgSend(chatId, '❌ No pude leer los productos. Revisá el formato:\n<code>Tipo, Marca, Modelo, Descripción, Cantidad, Precio, Rodado</code>\nUn producto por línea.');
+      return;
+    }
+    let resumen = `📦 <b>${productos.length} producto(s) a cargar:</b>\n\n`;
+    productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.descripcion}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
+    resumen += '¿Dónde ingresan estos productos?';
+    await saveSession('FACT_PROV_UBIC', { productos, driveUrl: null });
+    await tgSend(chatId, resumen, [[{ text: '🏪 Local', callback_data: 'fprov_local' }, { text: '🏭 Galpón', callback_data: 'fprov_galpon' }], [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'FACT_PROV_WAIT' && message && (message.photo || message.document)) {
