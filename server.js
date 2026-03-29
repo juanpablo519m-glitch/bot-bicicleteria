@@ -51,7 +51,7 @@ async function uploadToDrive(fileUrl, fileName, mimeType) {
     const base64 = Buffer.from(fileResp.data).toString('base64');
     const resp = await axios.post(
       N8N_DRIVE_WEBHOOK,
-      { filename: fileName, data: base64 },
+      { filename: fileName, data: base64, mimeType: mimeType || 'image/jpeg' },
       { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
     );
     return resp.data.url || null;
