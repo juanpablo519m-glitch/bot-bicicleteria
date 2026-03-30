@@ -110,6 +110,19 @@ async function refreshCache() {
     cache.facturas    = facturas;
     cacheReady = true;
     console.log(`[cache] users:${usuarios.length} stock:${stock.length} movs:${movimientos.length} facts:${facturas.length}`);
+    // Auto-corregir: si stock > 0 pero estado = vendido → poner disponible
+    const token = await getToken();
+    for (const p of stock) {
+      if ((Number(p.stock_actual) || 0) > 0 && (p.estado_unidad || '').toLowerCase() === 'vendido') {
+        p.estado_unidad = 'disponible';
+        await axios.put(
+          `${SHEETS_BASE}/${SHEET_ID}/values/STOCK!I${p._rowNum}?valueInputOption=RAW`,
+          { values: [['disponible']] },
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).catch(e => console.error('[fix-estado]', p.numero_serie, e.message));
+        console.log(`[fix-estado] ${p.numero_serie} stock=${p.stock_actual} → disponible`);
+      }
+    }
   } catch (e) { console.error('[cache] refresh error:', e.message); }
 }
 
