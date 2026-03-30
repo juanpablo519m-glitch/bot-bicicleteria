@@ -692,7 +692,7 @@ async function processUpdate(update) {
     const p = text.split(',').map(x => x.trim());
     if (p.length < 6) { await tgSend(chatId, 'Faltan datos. Mandá al menos los 6 campos separados por coma:\n<code>Nombre, Domicilio, DNI/CUIT, Tipo, Descripción, Precio</code>'); return; }
     // Parseo robusto: DNI/CUIT tiene dígitos/guiones, detectarlo para manejar domicilios con coma
-    const dniIdx = p.findIndex(x => /^[\d\-]{6,}$/.test(x.replace(/\s/g,'')));
+    const dniIdx = p.findIndex(x => /^\d{2}-\d{7,8}-\d$/.test(x.replace(/\s/g,'')) || /^\d{7,8}$/.test(x.replace(/\s/g,'')));
     let nombre, domicilio, dni_cuit, tipo, descripcion, precioRaw, mail, telefono;
     if (dniIdx >= 2) {
       nombre = p.slice(0, dniIdx - 1).join(', ');
@@ -972,7 +972,7 @@ async function processUpdate(update) {
     const refSerie = cb.slice(4);
     const ref = cache.stock.find(p => p.numero_serie === refSerie);
     if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
-    const variants = cache.stock.filter(p => (Number(p.stock_actual)||0) > 0 && (p.estado_unidad||'').toLowerCase() !== 'vendido' && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
+    const variants = cache.stock.filter(p => (Number(p.stock_actual)||0) > 0 && !['vendido','inactivo'].includes((p.estado_unidad||'').toLowerCase()) && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
     await showVariants(variants);
     return;
   }
@@ -1000,7 +1000,9 @@ async function processUpdate(update) {
       await tgSend(chatId, '❌ Faltan datos. Necesito: Descripción, Precio, Forma de pago');
       return;
     }
-    const [descripcion, precio, forma_pago] = parts;
+    const [descripcion, precioRawVr, forma_pago] = parts;
+    const precio = (precioRawVr||'0').replace(/\./g,'').replace(',','.');
+    if (isNaN(Number(precio)) || Number(precio) < 0) { await tgSend(chatId, '❌ El precio no es válido. Usá solo números (ej: 15000). Reintentá.'); return; }
     const { tipo } = datos;
     await saveSession('VR_CONF', { tipo, descripcion, precio, forma_pago });
     await tgSend(chatId,
@@ -1054,7 +1056,7 @@ async function processUpdate(update) {
       return;
     }
     // Parseo robusto: detectar DNI/CUIT para manejar domicilios con coma
-    const dniIdx2 = parts.findIndex(x => /^[\d\-]{6,}$/.test(x.replace(/\s/g,'')));
+    const dniIdx2 = parts.findIndex(x => /^\d{2}-\d{7,8}-\d$/.test(x.replace(/\s/g,'')) || /^\d{7,8}$/.test(x.replace(/\s/g,'')));
     let nombre, domicilio, dni_cuit, tipoRaw, precioRaw, forma_pago, mail, telefono;
     if (dniIdx2 >= 2) {
       nombre = parts.slice(0, dniIdx2 - 1).join(', ');
