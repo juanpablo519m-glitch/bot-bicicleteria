@@ -630,7 +630,8 @@ async function processUpdate(update) {
       if (mov.tipo === 'entrada') nuevoStock += parseInt(mov.cantidad || 0);
       else if (mov.tipo === 'salida') nuevoStock -= parseInt(mov.cantidad || 0);
       if (nuevoStock < 0) nuevoStock = 0;
-      await upsertRow('STOCK', { numero_serie: prod.numero_serie, stock_actual: String(nuevoStock), ultima_actualizacion: fechaApr }, 'numero_serie');
+      const nuevoEstado = nuevoStock === 0 ? 'vendido' : (nuevoStock > 0 && (prod.estado_unidad||'').toLowerCase() === 'vendido' ? 'disponible' : prod.estado_unidad || 'disponible');
+      await upsertRow('STOCK', { numero_serie: prod.numero_serie, stock_actual: String(nuevoStock), estado_unidad: nuevoEstado, ultima_actualizacion: fechaApr }, 'numero_serie');
     }
     await clearSession();
     await tgSend(chatId, `✅ Movimiento <b>${movId}</b> aprobado.\nStock actualizado.`, [[{ text: '📋 Ver más', callback_data: 'pendientes' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -737,6 +738,7 @@ async function processUpdate(update) {
     const parts = text.split(',').map(p => p.trim());
     if (parts.length < 3) { await tgSend(chatId, 'Formato: ID,nombre,rol'); return; }
     const [nId, nNombre, nRol] = parts;
+    if (!['operador','aprobador','administrador'].includes(nRol)) { await tgSend(chatId, '❌ Rol inválido. Usá: operador / aprobador / administrador'); return; }
     if (findUser(nId)) { await tgSend(chatId, `Ya existe ID ${nId}.`); await clearSession(); return; }
     await appendRow('USUARIOS', { telegram_id: nId, nombre: nNombre, rol: nRol, activo: 'TRUE', fecha_alta: now() });
     await clearSession();
