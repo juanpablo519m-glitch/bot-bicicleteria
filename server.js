@@ -491,43 +491,51 @@ async function processUpdate(update) {
     await saveSession('MOV_NUEVO', {});
     await tgSend(chatId,
       '📦 <b>Nuevo producto + entrada de stock</b>\nMandame todo en un mensaje:\n\n' +
-      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, talle, color, cantidad, referencia</code>\n\n' +
-      'El código se genera automático (B01, C01, A01...) — talle y color pueden ir vacíos\n\n' +
-      '<i>Ejemplo bici:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, M, Rojo, 2, Compra proveedor ABC</code>\n\n' +
-      '<i>Ejemplo accesorio (rodado/talle/color vacíos):</i>\n<code>accesorio, Shimano, Cadena XT, Cadena 11v, 8000, 5, , , , 10, Proveedor XYZ</code>',
+      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, talle, color, numero_serie, cantidad, referencia</code>\n\n' +
+      'numero_serie: dejalo vacío para generar automático (B01, A01...) o poné el código si ya existe\n\n' +
+      '<i>Ejemplo bici nueva:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, M, Rojo, , 1, Compra ABC</code>\n\n' +
+      '<i>Ejemplo accesorio existente (misma serie):</i>\n<code>accesorio, Shimano, Cadena XT, Cadena 11v, 8000, 5, , , , A01, 10, Proveedor XYZ</code>',
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_NUEVO' && text) {
     const p = text.split(',').map(x => x.trim());
-    if (p.length < 11) { await tgSend(chatId, 'Faltan datos. Necesito al menos 11 campos separados por coma.'); return; }
-    const [tipo, marca, modelo, desc, precio, stMin, rodado, talle, color, cantidad, ...refParts] = p;
+    if (p.length < 12) { await tgSend(chatId, 'Faltan datos. Necesito al menos 12 campos separados por coma.'); return; }
+    const [tipo, marca, modelo, desc, precio, stMin, rodado, talle, color, serieInput, cantidad, ...refParts] = p;
     const referencia = refParts.join(',').trim() || 'Sin referencia';
     const cant = parseInt(cantidad);
     if (isNaN(cant) || cant <= 0) { await tgSend(chatId, 'La cantidad debe ser un número mayor a 0.'); return; }
+    // Auto-generar serie si no se ingresó
     const prefix = tipo.toLowerCase() === 'bicicleta' ? 'B' : tipo.toLowerCase() === 'cuadro' ? 'C' : tipo.toLowerCase() === 'accesorio' ? 'A' : 'P';
     const existentes = stock.filter(s => (s.numero_serie||'').toUpperCase().startsWith(prefix)).map(s => parseInt((s.numero_serie||'').slice(prefix.length))).filter(n => !isNaN(n));
     const siguiente = existentes.length ? Math.max(...existentes) + 1 : 1;
-    const id = prefix + String(siguiente).padStart(2, '0');
+    const idAuto = prefix + String(siguiente).padStart(2, '0');
+    const id = serieInput || idAuto;
     await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', stMin: stMin||'1', rodado: rodado||'', talle: talle||'', color: color||'', cantidad: cant, referencia });
-    // Verificar si ya existe producto con misma marca+modelo+talle+color
-    const iguales = cache.stock.filter(s =>
+    // Verificar si ya existe producto con misma marca+modelo+talle+color+serie
+    const match = cache.stock.find(s =>
+      (s.numero_serie||'').toLowerCase() === id.toLowerCase() &&
       (s.marca||'').toLowerCase() === marca.toLowerCase() &&
       (s.modelo||'').toLowerCase() === modelo.toLowerCase() &&
       (s.talle||'').toLowerCase() === (talle||'').toLowerCase() &&
       (s.color||'').toLowerCase() === (color||'').toLowerCase()
     );
-    if (iguales.length > 0) {
-      const ex = iguales[0];
-      const stk = Number(ex.stock_actual) || 0;
+    const serieExisteOtro = !match && cache.stock.find(s => (s.numero_serie||'').toLowerCase() === id.toLowerCase());
+    if (serieExisteOtro) {
       await tgSend(chatId,
-        `⚠️ <b>Ya existe este producto en stock:</b>\n\nSerie: <code>${ex.numero_serie}</code>\n${ex.marca} ${ex.modelo}${talle ? ' — Talle '+talle : ''}${color ? ' — '+color : ''}\nStock actual: <b>${stk}</b> uds\n\n¿Qué querés hacer?`,
-        [[{ text: `🔄 Sumar ${cant} ud${cant>1?'s':''} al stock de ${ex.numero_serie}`, callback_data: `movsum_${ex.numero_serie}` }],
-         [{ text: '➕ Crear nueva entrada (número de serie distinto)', callback_data: 'movnew_ok' }],
+        `❌ El número de serie <code>${id}</code> ya existe pero corresponde a otro producto (${serieExisteOtro.marca} ${serieExisteOtro.modelo}). Verificá el número.`,
+        [[{ text: '🔄 Intentar de nuevo', callback_data: 'mov_nuevo' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      await clearSession();
+    } else if (match) {
+      const stk = Number(match.stock_actual) || 0;
+      await tgSend(chatId,
+        `⚠️ <b>Ya existe este producto en stock:</b>\n\nSerie: <code>${match.numero_serie}</code>\n${match.marca} ${match.modelo}${talle ? ' — Talle '+talle : ''}${color ? ' — '+color : ''}\nStock actual: <b>${stk}</b> uds\n\n¿Qué querés hacer?`,
+        [[{ text: `🔄 Sumar ${cant} ud${cant>1?'s':''} al stock de ${match.numero_serie}`, callback_data: `movsum_${match.numero_serie}` }],
+         [{ text: '➕ Crear con serie nueva (auto)', callback_data: 'movnew_ok' }],
          [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     } else {
       await tgSend(chatId,
-        `📦 <b>Confirmar nuevo producto:</b>\nCódigo: <b>${id}</b>\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\nPrecio: $${precio||'0'} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
+        `📦 <b>Confirmar nuevo producto:</b>\nSerie: <b>${id}</b>${serieInput ? '' : ' (auto)'}\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\nPrecio: $${precio||'0'} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
         [[{ text: '✅ Confirmar', callback_data: 'movnew_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     }
     return;
@@ -1231,7 +1239,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r5`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r6`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
