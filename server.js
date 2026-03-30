@@ -623,7 +623,7 @@ async function processUpdate(update) {
       if (mov.tipo === 'entrada') nuevoStock += parseInt(mov.cantidad || 0);
       else if (mov.tipo === 'salida') nuevoStock -= parseInt(mov.cantidad || 0);
       if (nuevoStock < 0) nuevoStock = 0;
-      await upsertRow('STOCK', { id_producto: mov.id_producto, stock_actual: String(nuevoStock), ultima_actualizacion: fechaApr }, 'id_producto');
+      await upsertRow('STOCK', { numero_serie: prod.numero_serie, stock_actual: String(nuevoStock), ultima_actualizacion: fechaApr }, 'numero_serie');
     }
     await clearSession();
     await tgSend(chatId, `✅ Movimiento <b>${movId}</b> aprobado.\nStock actualizado.`, [[{ text: '📋 Ver más', callback_data: 'pendientes' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -785,6 +785,7 @@ async function processUpdate(update) {
     }
     let resumen = `📦 <b>${productos.length} producto(s) a cargar:</b>\n\n`;
     productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.descripcion}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
+    if (resumen.length > 3800) resumen = resumen.substring(0, 3800) + '\n<i>...y más</i>\n\n';
     resumen += '¿Dónde ingresan estos productos?';
     await saveSession('FACT_PROV_UBIC', { productos, driveUrl: null });
     await tgSend(chatId, resumen, [[{ text: '🏪 Local', callback_data: 'fprov_local' }, { text: '🏭 Galpón', callback_data: 'fprov_galpon' }], [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
@@ -815,6 +816,7 @@ async function processUpdate(update) {
     if (!productos.length) { await tgSend(chatId, '❌ No pude detectar productos. Intentá con una foto más nítida.'); await clearSession(); return; }
     let resumen = `📦 <b>Detecté ${productos.length} producto(s):</b>\n\n`;
     productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.descripcion}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
+    if (resumen.length > 3700) resumen = resumen.substring(0, 3700) + '\n<i>...y más</i>\n\n';
     resumen += '¿Dónde ingresan estos productos?';
     if (driveUrl) resumen += `\n\n💾 <a href="${driveUrl}">Factura guardada en Drive</a>`;
     await saveSession('FACT_PROV_UBIC', { productos, driveUrl });
