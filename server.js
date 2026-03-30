@@ -662,7 +662,14 @@ async function processUpdate(update) {
       [[{ text: '👤 Agregar Usuario', callback_data: 'adm_user' }],
        [{ text: '🧾 Cargar Datos Factura', callback_data: 'factura' }],
        [{ text: '📷 Carga por Factura (OCR)', callback_data: 'fact_prov' }],
+       [{ text: '🔄 Recargar datos del stock', callback_data: 'adm_reload' }],
        [{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'adm_reload' && rol === 'administrador') {
+    await tgSend(chatId, '🔄 Recargando datos...');
+    await refreshCache();
+    await tgSend(chatId, `✅ Datos actualizados.\n📦 Stock: ${cache.stock.filter(s => s.numero_serie || s.marca).length} productos`, [[{ text: '⚙️ Panel Admin', callback_data: 'admin' }]]);
     return;
   }
   if (cb === 'adm_user' && rol === 'administrador') {
