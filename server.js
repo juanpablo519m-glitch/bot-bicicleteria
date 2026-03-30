@@ -94,6 +94,7 @@ async function loadSheet(name) {
   if (rows.length < 2) return [];
   const hdrs = rows[0];
   return rows.slice(1).map((row, idx) => {
+    if (!row) row = [];
     const obj = { _rowNum: idx + 2 };
     hdrs.forEach((h, i) => { obj[h] = row[i] ?? ''; });
     return obj;
@@ -105,15 +106,22 @@ async function refreshCache() {
   if (_cacheRefreshing) return;
   _cacheRefreshing = true;
   try {
-    const [usuarios, sesiones, stock, movimientos, facturas] = await Promise.all([
+    const [rUsuarios, rSesiones, rStock, rMovimientos, rFacturas] = await Promise.allSettled([
       loadSheet('USUARIOS'), loadSheet('SESIONES'), loadSheet('STOCK'),
       loadSheet('MOVIMIENTOS_PENDIENTES'), loadSheet('FACTURAS')
     ]);
-    cache.usuarios    = usuarios;
-    cache.sesiones    = sesiones;
-    cache.stock       = stock;
-    cache.movimientos = movimientos;
-    cache.facturas    = facturas;
+    if (rUsuarios.status    === 'fulfilled') cache.usuarios    = rUsuarios.value;
+    else console.error('[cache] USUARIOS falló:', rUsuarios.reason?.message);
+    if (rSesiones.status    === 'fulfilled') cache.sesiones    = rSesiones.value;
+    else console.error('[cache] SESIONES falló:', rSesiones.reason?.message);
+    if (rStock.status       === 'fulfilled') cache.stock       = rStock.value;
+    else console.error('[cache] STOCK falló:', rStock.reason?.message);
+    if (rMovimientos.status === 'fulfilled') cache.movimientos = rMovimientos.value;
+    else console.error('[cache] MOVIMIENTOS falló:', rMovimientos.reason?.message);
+    if (rFacturas.status    === 'fulfilled') cache.facturas    = rFacturas.value;
+    else console.error('[cache] FACTURAS falló:', rFacturas.reason?.message);
+    const stock = cache.stock;
+    const usuarios = cache.usuarios;
     cacheReady = true;
     console.log(`[cache] users:${usuarios.length} stock:${stock.length} movs:${movimientos.length} facts:${facturas.length}`);
     // Auto-corregir: si stock > 0 pero estado = vendido → poner disponible
@@ -466,7 +474,7 @@ async function processUpdate(update) {
   }
   if (estado === 'MOV_NUEVO' && text) {
     const p = text.split(',').map(x => x.trim());
-    if (p.length < 7) { await tgSend(chatId, 'Faltan datos. Necesito al menos 9 campos separados por coma.'); return; }
+    if (p.length < 9) { await tgSend(chatId, 'Faltan datos. Necesito al menos 9 campos separados por coma.'); return; }
     const [tipo, marca, modelo, desc, precio, stMin, rodado, cantidad, ...refParts] = p;
     const referencia = refParts.join(',').trim() || 'Sin referencia';
     const cant = parseInt(cantidad);
@@ -626,9 +634,9 @@ async function processUpdate(update) {
     await appendRow('HISTORIAL', { id_movimiento: movId, tipo: mov.tipo, estado: 'aprobado', id_producto: mov.id_producto || mov.numero_serie, cantidad: mov.cantidad, referencia_doc: mov.referencia_doc, telegram_id_operador: mov.telegram_id_operador, nombre_operador: mov.nombre_operador, telegram_id_aprobador: userId, nombre_aprobador: user.nombre, fecha_creacion: mov.fecha_creacion, fecha_aprobacion: fechaApr, motivo_rechazo: '', notas_aprobador: '' });
     const prod = cache.stock.find(p => p.id_producto === mov.id_producto) || cache.stock.find(p => mov.numero_serie && p.numero_serie === mov.numero_serie);
     if (prod) {
-      let nuevoStock = parseInt(prod.stock_actual || 0);
-      if (mov.tipo === 'entrada') nuevoStock += parseInt(mov.cantidad || 0);
-      else if (mov.tipo === 'salida') nuevoStock -= parseInt(mov.cantidad || 0);
+      let nuevoStock = parseInt(prod.stock_actual) || 0;
+      if (mov.tipo === 'entrada') nuevoStock += parseInt(mov.cantidad) || 0;
+      else if (mov.tipo === 'salida') nuevoStock -= parseInt(mov.cantidad) || 0;
       if (nuevoStock < 0) nuevoStock = 0;
       const nuevoEstado = nuevoStock === 0 ? 'vendido' : (nuevoStock > 0 && (prod.estado_unidad||'').toLowerCase() === 'vendido' ? 'disponible' : prod.estado_unidad || 'disponible');
       await upsertRow('STOCK', { numero_serie: prod.numero_serie, stock_actual: String(nuevoStock), estado_unidad: nuevoEstado, ultima_actualizacion: fechaApr }, 'numero_serie');
@@ -1167,7 +1175,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-29-r5`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r1`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
