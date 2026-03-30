@@ -123,7 +123,7 @@ async function refreshCache() {
     const stock = cache.stock;
     const usuarios = cache.usuarios;
     cacheReady = true;
-    console.log(`[cache] users:${usuarios.length} stock:${stock.length} movs:${movimientos.length} facts:${facturas.length}`);
+    console.log(`[cache] users:${usuarios.length} stock:${stock.length} movs:${cache.movimientos.length} facts:${cache.facturas.length}`);
     // Auto-corregir: si stock > 0 pero estado = vendido → poner disponible
     const token = await getToken();
     for (const p of stock) {
@@ -1175,7 +1175,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r1`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r2`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
