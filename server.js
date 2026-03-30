@@ -196,6 +196,32 @@ async function upsertRow(sheetName, data, keyField) {
   }
 }
 
+// ── Ordenar STOCK por marca → modelo → talle ──────────────────────────────────
+let _stockSheetId = null;
+async function sortStock() {
+  try {
+    const token = await getToken();
+    if (_stockSheetId === null) {
+      const meta = await axios.get(`${SHEETS_BASE}/${SHEET_ID}?fields=sheets.properties`,
+        { headers: { Authorization: `Bearer ${token}` } });
+      const sheet = (meta.data.sheets || []).find(s => s.properties.title === 'STOCK');
+      _stockSheetId = sheet ? sheet.properties.sheetId : 0;
+    }
+    await axios.post(`${SHEETS_BASE}/${SHEET_ID}:batchUpdate`, {
+      requests: [{ sortRange: {
+        range: { sheetId: _stockSheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: HEADERS.STOCK.length },
+        sortSpecs: [
+          { dimensionIndex: 1, sortOrder: 'ASCENDING' },   // marca
+          { dimensionIndex: 2, sortOrder: 'ASCENDING' },   // modelo
+          { dimensionIndex: 13, sortOrder: 'ASCENDING' }   // talle
+        ]
+      }}]
+    }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
+    console.log('[sort] STOCK ordenado por marca/modelo/talle');
+    await refreshCache(); // actualizar _rowNum después del sort
+  } catch (e) { console.error('[sort]', e.response?.data?.error?.message || e.message); }
+}
+
 // ── Sincronizar VISTA_BICIS cuando cambia ubicación en STOCK ──────────────────
 async function syncVistaUbicacion(id_producto, ubicacion) {
   try {
@@ -495,6 +521,7 @@ async function processUpdate(update) {
     await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: d.id, cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    setTimeout(() => sortStock(), 2000); // ordenar STOCK en background
     for (const u of usuarios)
       if (['aprobador','administrador'].includes(u.rol) && String(u.telegram_id) !== userId && u.activo === 'TRUE')
         await tgSend(u.telegram_id, `⚠️ Nuevo producto + entrada de ${user.nombre}:\nProducto: ${d.id} ${d.marca} ${d.modelo}\nCantidad: ${d.cantidad}\nRef: ${d.referencia}`, [[{ text: '✅ Ver pendientes', callback_data: 'pendientes' }]]);
@@ -1175,7 +1202,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r3`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r4`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
