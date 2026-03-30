@@ -7,6 +7,9 @@ const crypto  = require('crypto');
 // ── Constantes ─────────────────────────────────────────────────────────────────
 const PORT      = process.env.PORT || 3000;
 const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN)  { console.error('FATAL: BOT_TOKEN no configurado'); process.exit(1); }
+if (!process.env.SHEET_ID) { console.error('FATAL: SHEET_ID no configurado'); process.exit(1); }
+if (!process.env.SA_EMAIL) { console.error('FATAL: SA_EMAIL no configurado'); process.exit(1); }
 const TG        = `https://api.telegram.org/bot${BOT_TOKEN}`;
 const ADMIN_ID  = process.env.ADMIN_ID || '5307233657';
 const GROQ_KEY  = process.env.GROQ_KEY;
@@ -293,7 +296,7 @@ async function processUpdate(update) {
       fd.append('model', 'whisper-large-v3-turbo');
       fd.append('language', 'es');
       const tr = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', fd,
-        { headers: { Authorization: `Bearer ${GROQ_KEY}`, ...fd.getHeaders() } });
+        { headers: { Authorization: `Bearer ${GROQ_KEY}`, ...fd.getHeaders() }, timeout: 30000 });
       text = tr.data?.text || '';
       if (!text) { await tgSend(chatId, '❌ No entendí el audio. Intentá escribir.'); return; }
       await tgSend(chatId, `🎤 Entendí: <i>"${text}"</i>`);
@@ -691,6 +694,7 @@ async function processUpdate(update) {
     const mail = p[6] || '';
     const telefono = p[7] || '';
     const precio     = (precioRaw||'0').trim().replace(/\./g,'').replace(',','.');
+    if (isNaN(Number(precio)) || Number(precio) < 0) { await tgSend(chatId, '❌ El precio no es válido. Usá solo números (ej: 150000). Reintentá.'); return; }
     const tipoUpper  = (tipo||'').toUpperCase();
     if (!['A','B','C'].includes(tipoUpper)) { await tgSend(chatId, 'El tipo debe ser A, B o C. Reintentá.'); return; }
     await saveSession('FACT_CONF', { nombre, domicilio, dni_cuit, tipo: tipoUpper, descripcion, precio, mail, telefono });
@@ -1034,11 +1038,13 @@ async function processUpdate(update) {
       await tgSend(chatId, '❌ Faltan datos. Mandame al menos los 6 separados por coma:\nNombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Precio, Forma de pago');
       return;
     }
-    const [nombre, domicilio, dni_cuit, tipoRaw, precio, forma_pago] = parts;
+    const [nombre, domicilio, dni_cuit, tipoRaw, precioRaw, forma_pago] = parts;
     const mail = parts[6] || '';
     const telefono = parts[7] || '';
     const tipo = tipoRaw.toUpperCase();
     if (!['A','B','C'].includes(tipo)) { await tgSend(chatId, '❌ El tipo de factura debe ser A, B o C. Reintentá.'); return; }
+    const precio = (precioRaw||'0').trim().replace(/\./g,'').replace(',','.');
+    if (isNaN(Number(precio)) || Number(precio) < 0) { await tgSend(chatId, '❌ El precio no es válido. Usá solo números (ej: 280000). Reintentá.'); return; }
     await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono });
     await tgSend(chatId,
       `💰 <b>Confirmar venta:</b>\n\n` +
