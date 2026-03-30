@@ -334,6 +334,7 @@ async function processUpdate(update) {
   };
 
   const showVariants = async (variants) => {
+    if (!variants || !variants.length) { await tgSend(chatId, '❌ No hay variantes disponibles en stock para este modelo.', [[{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     const first = variants[0];
     const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${first.rodado&&first.rodado!=='n/a'?' R'+first.rodado:''}`;
     const kb = variants.map(p => {
@@ -533,7 +534,9 @@ async function processUpdate(update) {
     return;
   }
   if (cb === 'transf_ok' && estado === 'MOV_TRANSF_CONF') {
-    await upsertRow('STOCK', { id_producto: datos.id_producto, ubicacion: datos.destino, ultima_actualizacion: now() }, 'id_producto');
+    const keyField = datos.numero_serie ? 'numero_serie' : 'id_producto';
+    const keyVal = datos.numero_serie || datos.id_producto;
+    await upsertRow('STOCK', { [keyField]: keyVal, ubicacion: datos.destino, ultima_actualizacion: now() }, keyField);
     await clearSession();
     await tgSend(chatId, `✅ <b>${datos.marca} ${datos.modelo}</b> transferido a <b>${datos.destino}</b>.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
@@ -581,8 +584,8 @@ async function processUpdate(update) {
   }
   if (cb === 'mov_ok' && estado === 'MOV_CONF') {
     const d = datos; const movId = `MOV-${Date.now()}`;
-    await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: d.tipo, estado: 'pendiente', id_producto: d.id_producto, numero_serie: '', cantidad: d.cantidad, descripcion_movimiento: `${d.tipo} ${d.cantidad}u ${d.id_producto}`, referencia_doc: d.referencia, hash_duplicado: `${d.id_producto}-${d.tipo}-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: now(), fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
-    await clearSession();
+    await clearSession(); // anti double-click
+    await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: d.tipo, estado: 'pendiente', id_producto: d.id_producto||'', numero_serie: d.numero_serie||'', cantidad: d.cantidad, descripcion_movimiento: `${d.tipo} ${d.cantidad}u ${d.numero_serie||d.id_producto}`, referencia_doc: d.referencia, hash_duplicado: `${d.numero_serie||d.id_producto}-${d.tipo}-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: now(), fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await tgSend(chatId, `✅ Movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     for (const u of usuarios)
       if (['aprobador','administrador'].includes(u.rol) && String(u.telegram_id) !== userId && u.activo === 'TRUE')
@@ -614,7 +617,7 @@ async function processUpdate(update) {
     const fechaApr = now();
     await upsertRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, estado: 'aprobado', telegram_id_aprobador: userId, nombre_aprobador: user.nombre, fecha_aprobacion: fechaApr, motivo_rechazo: '', notas_aprobador: '' }, 'id_movimiento');
     await appendRow('HISTORIAL', { id_movimiento: movId, tipo: mov.tipo, estado: 'aprobado', id_producto: mov.id_producto, cantidad: mov.cantidad, referencia_doc: mov.referencia_doc, telegram_id_operador: mov.telegram_id_operador, nombre_operador: mov.nombre_operador, telegram_id_aprobador: userId, nombre_aprobador: user.nombre, fecha_creacion: mov.fecha_creacion, fecha_aprobacion: fechaApr, motivo_rechazo: '', notas_aprobador: '' });
-    const prod = cache.stock.find(p => p.id_producto === mov.id_producto);
+    const prod = cache.stock.find(p => p.id_producto === mov.id_producto) || cache.stock.find(p => mov.numero_serie && p.numero_serie === mov.numero_serie);
     if (prod) {
       let nuevoStock = parseInt(prod.stock_actual || 0);
       if (mov.tipo === 'entrada') nuevoStock += parseInt(mov.cantidad || 0);
@@ -695,8 +698,8 @@ async function processUpdate(update) {
   }
   if (cb === 'fact_ok' && estado === 'FACT_CONF') {
     const d = datos;
+    await clearSession(); // anti double-click
     await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), factura_realizada: 'FALSE', mail: d.mail||'', telefono: d.telefono||'' });
-    await clearSession();
     await tgSend(chatId, '✅ Datos de factura guardados. Revisá la hoja FACTURAS en Google Sheets.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
@@ -831,9 +834,9 @@ async function processUpdate(update) {
   }
   if (cb === 'fprov_ok' && estado === 'FACT_PROV_CONF') {
     const { productos, ubicacion, driveUrl } = datos; const t = now();
+    await clearSession(); // anti double-click
     for (const p of productos)
       await appendRow('COMPRAS', { fecha: t, tipo: p.tipo, marca: p.marca||'', modelo: p.modelo||'', descripcion: p.descripcion||'', cantidad: String(p.cantidad||1), precio_unitario: p.precio_unitario||'0', rodado: p.rodado||'', ubicacion, estado: 'pendiente', foto_drive: driveUrl||'' });
-    await clearSession();
     let confMsg = `✅ <b>${productos.length} producto(s)</b> guardados en la hoja <b>COMPRAS</b>. Revisalos y pasalos al stock cuando quieras.`;
     if (driveUrl) confMsg += `\n💾 <a href="${driveUrl}">Ver factura en Drive</a>`;
     await tgSend(chatId, confMsg, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -994,8 +997,8 @@ async function processUpdate(update) {
   if (cb === 'vr_ok' && estado === 'VR_CONF') {
     const { tipo, descripcion, precio, forma_pago } = datos;
     const sheet = tipo === 'accesorio' ? 'VENTAS_ACCESORIOS' : 'VENTAS_BICICLETAS';
+    await clearSession(); // anti double-click
     await appendRow(sheet, { fecha: now(), descripcion, precio, forma_pago, operador: user.nombre });
-    await clearSession();
     await tgSend(chatId,
       `✅ <b>Venta registrada</b>\n📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
       [[{ text: '💰 Otra venta', callback_data: 'venta_rapida' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -1059,10 +1062,10 @@ async function processUpdate(update) {
     const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
     if (!p) { await tgSend(chatId, '❌ No se encontró el producto en stock. Recargá los datos e intentá de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
+    await clearSession(); // anti double-click: limpiar sesión antes de procesar
     const newStock = Math.max(0, (Number(p.stock_actual) || 1) - 1);
     await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
-    await clearSession();
     await tgSend(chatId,
       `✅ <b>Venta registrada</b>\n\n📦 ${descripcion}\n👤 ${nombre}\n💵 $${precio} — ${forma_pago}\n\n📋 Factura pendiente en Google Sheets.`,
       [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
