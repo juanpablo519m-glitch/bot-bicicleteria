@@ -491,17 +491,17 @@ async function processUpdate(update) {
     await saveSession('MOV_NUEVO', {});
     await tgSend(chatId,
       '📦 <b>Nuevo producto + entrada de stock</b>\nMandame todo en un mensaje:\n\n' +
-      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, cantidad, referencia</code>\n\n' +
-      'El código se genera automático (B01, C01, A01...)\n\n' +
-      '<i>Ejemplo bici:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, 2, Compra proveedor ABC</code>\n\n' +
-      '<i>Ejemplo accesorio (rodado vacío):</i>\n<code>accesorio, Shimano, Cadena XT, Cadena 11v, 8000, 5, , 10, Proveedor XYZ</code>',
+      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, talle, color, cantidad, referencia</code>\n\n' +
+      'El código se genera automático (B01, C01, A01...) — talle y color pueden ir vacíos\n\n' +
+      '<i>Ejemplo bici:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, M, Rojo, 2, Compra proveedor ABC</code>\n\n' +
+      '<i>Ejemplo accesorio (rodado/talle/color vacíos):</i>\n<code>accesorio, Shimano, Cadena XT, Cadena 11v, 8000, 5, , , , 10, Proveedor XYZ</code>',
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_NUEVO' && text) {
     const p = text.split(',').map(x => x.trim());
-    if (p.length < 9) { await tgSend(chatId, 'Faltan datos. Necesito al menos 9 campos separados por coma.'); return; }
-    const [tipo, marca, modelo, desc, precio, stMin, rodado, cantidad, ...refParts] = p;
+    if (p.length < 11) { await tgSend(chatId, 'Faltan datos. Necesito al menos 11 campos separados por coma.'); return; }
+    const [tipo, marca, modelo, desc, precio, stMin, rodado, talle, color, cantidad, ...refParts] = p;
     const referencia = refParts.join(',').trim() || 'Sin referencia';
     const cant = parseInt(cantidad);
     if (isNaN(cant) || cant <= 0) { await tgSend(chatId, 'La cantidad debe ser un número mayor a 0.'); return; }
@@ -509,22 +509,51 @@ async function processUpdate(update) {
     const existentes = stock.filter(s => (s.numero_serie||'').toUpperCase().startsWith(prefix)).map(s => parseInt((s.numero_serie||'').slice(prefix.length))).filter(n => !isNaN(n));
     const siguiente = existentes.length ? Math.max(...existentes) + 1 : 1;
     const id = prefix + String(siguiente).padStart(2, '0');
-    await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', stMin: stMin||'1', rodado: rodado||'', cantidad: cant, referencia });
-    await tgSend(chatId,
-      `📦 <b>Confirmar:</b>\nCódigo asignado: <b>${id}</b>\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? '\nRodado: '+rodado : ''}\nDescripción: ${desc}\nPrecio: $${precio||'0'} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
-      [[{ text: '✅ Confirmar', callback_data: 'movnew_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', stMin: stMin||'1', rodado: rodado||'', talle: talle||'', color: color||'', cantidad: cant, referencia });
+    // Verificar si ya existe producto con misma marca+modelo+talle+color
+    const iguales = cache.stock.filter(s =>
+      (s.marca||'').toLowerCase() === marca.toLowerCase() &&
+      (s.modelo||'').toLowerCase() === modelo.toLowerCase() &&
+      (s.talle||'').toLowerCase() === (talle||'').toLowerCase() &&
+      (s.color||'').toLowerCase() === (color||'').toLowerCase()
+    );
+    if (iguales.length > 0) {
+      const ex = iguales[0];
+      const stk = Number(ex.stock_actual) || 0;
+      await tgSend(chatId,
+        `⚠️ <b>Ya existe este producto en stock:</b>\n\nSerie: <code>${ex.numero_serie}</code>\n${ex.marca} ${ex.modelo}${talle ? ' — Talle '+talle : ''}${color ? ' — '+color : ''}\nStock actual: <b>${stk}</b> uds\n\n¿Qué querés hacer?`,
+        [[{ text: `🔄 Sumar ${cant} ud${cant>1?'s':''} al stock de ${ex.numero_serie}`, callback_data: `movsum_${ex.numero_serie}` }],
+         [{ text: '➕ Crear nueva entrada (número de serie distinto)', callback_data: 'movnew_ok' }],
+         [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    } else {
+      await tgSend(chatId,
+        `📦 <b>Confirmar nuevo producto:</b>\nCódigo: <b>${id}</b>\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\nPrecio: $${precio||'0'} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
+        [[{ text: '✅ Confirmar', callback_data: 'movnew_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    }
+    return;
+  }
+  if (cb.startsWith('movsum_') && estado === 'MOV_NUEVO_CONF') {
+    const d = datos; const t = now();
+    const serieExist = cb.slice(7);
+    await clearSession();
+    const movId = `MOV-${Date.now()}`;
+    await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: serieExist, numero_serie: serieExist, cantidad: String(d.cantidad), descripcion_movimiento: `entrada ${d.cantidad}u ${serieExist}`, referencia_doc: d.referencia, hash_duplicado: `${serieExist}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
+    await tgSend(chatId, `✅ Entrada de <b>${d.cantidad}</b> ud${d.cantidad>1?'s':''} sumada al stock de <b>${serieExist}</b>.\nMovimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    for (const u of usuarios)
+      if (['aprobador','administrador'].includes(u.rol) && String(u.telegram_id) !== userId && u.activo === 'TRUE')
+        await tgSend(u.telegram_id, `⚠️ Entrada de stock de ${user.nombre}:\nProducto: ${serieExist} ${d.marca} ${d.modelo}\nCantidad: ${d.cantidad}\nRef: ${d.referencia}`, [[{ text: '✅ Ver pendientes', callback_data: 'pendientes' }]]);
     return;
   }
   if (cb === 'movnew_ok' && estado === 'MOV_NUEVO_CONF') {
     const d = datos; const t = now(); const movId = `MOV-${Date.now()}`;
-    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, talle: '', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: '' });
+    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, talle: d.talle||'', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: d.color||'' });
     await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: d.id, cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
-    setTimeout(() => sortStock(), 2000); // ordenar STOCK en background
+    setTimeout(() => sortStock(), 2000);
     for (const u of usuarios)
       if (['aprobador','administrador'].includes(u.rol) && String(u.telegram_id) !== userId && u.activo === 'TRUE')
-        await tgSend(u.telegram_id, `⚠️ Nuevo producto + entrada de ${user.nombre}:\nProducto: ${d.id} ${d.marca} ${d.modelo}\nCantidad: ${d.cantidad}\nRef: ${d.referencia}`, [[{ text: '✅ Ver pendientes', callback_data: 'pendientes' }]]);
+        await tgSend(u.telegram_id, `⚠️ Nuevo producto + entrada de ${user.nombre}:\nProducto: ${d.id} ${d.marca} ${d.modelo}${d.talle?' T'+d.talle:''}${d.color?' '+d.color:''}\nCantidad: ${d.cantidad}\nRef: ${d.referencia}`, [[{ text: '✅ Ver pendientes', callback_data: 'pendientes' }]]);
     return;
   }
 
@@ -1202,7 +1231,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r4`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r5`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
