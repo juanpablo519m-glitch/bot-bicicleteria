@@ -332,8 +332,8 @@ async function processUpdate(update) {
 
   const showProdDetail = async (p) => {
     const stk = Number(p.stock_actual) || 0;
-    const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-    const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
     let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
     if (p.talle || p.color) msg += `${p.talle ? 'Talle: '+p.talle : ''}${p.talle && p.color ? ' | ' : ''}${p.color ? 'Color: '+p.color : ''}\n`;
     msg += `${p.descripcion||''}\n`;
@@ -961,8 +961,8 @@ async function processUpdate(update) {
     if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     if (p.ficha_tecnica) {
       // Ir directo a ficha técnica
-      const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-      const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+      const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+      const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
       const fichaCorta = p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica;
       let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${fichaCorta}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
       const kbF = [];
@@ -1115,7 +1115,7 @@ async function processUpdate(update) {
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
     if (!p) { await tgSend(chatId, '❌ No se encontró el producto en stock. Recargá los datos e intentá de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
     await clearSession(); // anti double-click: limpiar sesión antes de procesar
-    const newStock = Math.max(0, (Number(p.stock_actual) || 1) - 1);
+    const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
     await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
     await tgSend(chatId,
@@ -1129,8 +1129,8 @@ async function processUpdate(update) {
     const serie = cb.replace('ficha_', '');
     const p = stock.find(s => s.numero_serie === serie);
     if (!p || !p.ficha_tecnica) { await tgSend(chatId, 'No hay ficha técnica cargada para este producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
-    const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-    const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
+    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
     const footer = `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
     const header = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n`;
     const ficha = p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica;
@@ -1175,7 +1175,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r2`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r3`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
