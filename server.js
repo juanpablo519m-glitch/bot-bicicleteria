@@ -97,7 +97,10 @@ async function loadSheet(name) {
   });
 }
 
+let _cacheRefreshing = false;
 async function refreshCache() {
+  if (_cacheRefreshing) return;
+  _cacheRefreshing = true;
   try {
     const [usuarios, sesiones, stock, movimientos, facturas] = await Promise.all([
       loadSheet('USUARIOS'), loadSheet('SESIONES'), loadSheet('STOCK'),
@@ -124,6 +127,7 @@ async function refreshCache() {
       }
     }
   } catch (e) { console.error('[cache] refresh error:', e.message); }
+  finally { _cacheRefreshing = false; }
 }
 
 async function appendRow(sheetName, data) {
@@ -476,7 +480,7 @@ async function processUpdate(update) {
   }
   if (cb === 'movnew_ok' && estado === 'MOV_NUEVO_CONF') {
     const d = datos; const t = now(); const movId = `MOV-${Date.now()}`;
-    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, fecha_ingreso: t, ultima_actualizacion: t });
+    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, talle: '', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: '' });
     await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: d.id, cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -616,7 +620,7 @@ async function processUpdate(update) {
     if (!mov) { await tgSend(chatId, 'Movimiento no encontrado.'); await clearSession(); return; }
     const fechaApr = now();
     await upsertRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, estado: 'aprobado', telegram_id_aprobador: userId, nombre_aprobador: user.nombre, fecha_aprobacion: fechaApr, motivo_rechazo: '', notas_aprobador: '' }, 'id_movimiento');
-    await appendRow('HISTORIAL', { id_movimiento: movId, tipo: mov.tipo, estado: 'aprobado', id_producto: mov.id_producto, cantidad: mov.cantidad, referencia_doc: mov.referencia_doc, telegram_id_operador: mov.telegram_id_operador, nombre_operador: mov.nombre_operador, telegram_id_aprobador: userId, nombre_aprobador: user.nombre, fecha_creacion: mov.fecha_creacion, fecha_aprobacion: fechaApr, motivo_rechazo: '', notas_aprobador: '' });
+    await appendRow('HISTORIAL', { id_movimiento: movId, tipo: mov.tipo, estado: 'aprobado', id_producto: mov.id_producto || mov.numero_serie, cantidad: mov.cantidad, referencia_doc: mov.referencia_doc, telegram_id_operador: mov.telegram_id_operador, nombre_operador: mov.nombre_operador, telegram_id_aprobador: userId, nombre_aprobador: user.nombre, fecha_creacion: mov.fecha_creacion, fecha_aprobacion: fechaApr, motivo_rechazo: '', notas_aprobador: '' });
     const prod = cache.stock.find(p => p.id_producto === mov.id_producto) || cache.stock.find(p => mov.numero_serie && p.numero_serie === mov.numero_serie);
     if (prod) {
       let nuevoStock = parseInt(prod.stock_actual || 0);
@@ -1033,14 +1037,16 @@ async function processUpdate(update) {
     const [nombre, domicilio, dni_cuit, tipoRaw, precio, forma_pago] = parts;
     const mail = parts[6] || '';
     const telefono = parts[7] || '';
-    await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo: tipoRaw.toUpperCase(), precio, forma_pago, mail, telefono });
+    const tipo = tipoRaw.toUpperCase();
+    if (!['A','B','C'].includes(tipo)) { await tgSend(chatId, '❌ El tipo de factura debe ser A, B o C. Reintentá.'); return; }
+    await saveSession('VENTA_CONF', { ...datos, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono });
     await tgSend(chatId,
       `💰 <b>Confirmar venta:</b>\n\n` +
       `📦 ${datos.descripcion}\n` +
       `👤 ${nombre}\n` +
       `🏠 ${domicilio}\n` +
       `🪪 ${dni_cuit}\n` +
-      `🧾 Factura tipo ${tipoRaw.toUpperCase()}\n` +
+      `🧾 Factura tipo ${tipo}\n` +
       `💵 $${precio} — ${forma_pago}` +
       (mail ? `\n📧 ${mail}` : '') +
       (telefono ? `\n📞 ${telefono}` : ''),
