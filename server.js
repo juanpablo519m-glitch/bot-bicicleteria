@@ -1088,5 +1088,5 @@ app.post('/webhook', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-29-AGRUPACION`);
   await refreshCache();
-  setInterval(refreshCache, 5 * 60 * 1000); // refrescar cache cada 5 min
+  setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
