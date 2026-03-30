@@ -260,7 +260,7 @@ async function processUpdate(update) {
   const sesiones    = cache.sesiones.filter(s => s.telegram_id);
   const stock       = cache.stock.filter(s => s.numero_serie || s.marca);
   const movPend     = cache.movimientos.filter(m => m.id_movimiento && m.estado === 'pendiente');
-  const factPend    = [];
+  const factPend    = cache.facturas.filter(f => f.id_factura && (f.factura_realizada === 'FALSE' || f.factura_realizada === false || f.factura_realizada === ''));
 
   let userId, chatId, text, cb, cbId, firstName, message;
   if (update.callback_query) {
@@ -475,7 +475,7 @@ async function processUpdate(update) {
   }
   if (cb === 'movnew_ok' && estado === 'MOV_NUEVO_CONF') {
     const d = datos; const t = now(); const movId = `MOV-${Date.now()}`;
-    await appendRow('STOCK', { id_producto: d.id, tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: '', descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_venta: d.precio, rodado: d.rodado, fecha_ingreso: t, ultima_actualizacion: t });
+    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, fecha_ingreso: t, ultima_actualizacion: t });
     await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: '', cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -685,7 +685,7 @@ async function processUpdate(update) {
     const telefono = p[7] || '';
     const precio     = (precioRaw||'0').trim().replace(/\./g,'').replace(',','.');
     const tipoUpper  = (tipo||'').toUpperCase();
-    if (!['A','B'].includes(tipoUpper)) { await tgSend(chatId, 'El tipo debe ser A o B. Reintentá.'); return; }
+    if (!['A','B','C'].includes(tipoUpper)) { await tgSend(chatId, 'El tipo debe ser A, B o C. Reintentá.'); return; }
     await saveSession('FACT_CONF', { nombre, domicilio, dni_cuit, tipo: tipoUpper, descripcion, precio, mail, telefono });
     await tgSend(chatId,
       `🧾 <b>Confirmar datos:</b>\nCliente: ${nombre}\nDomicilio: ${domicilio}\nDNI/CUIT: ${dni_cuit}\nTipo: ${tipoUpper}\nDescripción: ${descripcion}\nPrecio: $${precio}` +
@@ -927,7 +927,8 @@ async function processUpdate(update) {
       // Ir directo a ficha técnica
       const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
       const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
-      let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${p.ficha_tecnica}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
+      const fichaCorta = p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica;
+      let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${fichaCorta}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
       const kbF = [];
       if ((Number(p.stock_actual)||0) > 0) kbF.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
       kbF.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
@@ -1057,7 +1058,8 @@ async function processUpdate(update) {
   if (cb === 'venta_ok' && estado === 'VENTA_CONF') {
     const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
-    const newStock = Math.max(0, (Number(p?.stock_actual) || 1) - 1);
+    if (!p) { await tgSend(chatId, '❌ No se encontró el producto en stock. Recargá los datos e intentá de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
+    const newStock = Math.max(0, (Number(p.stock_actual) || 1) - 1);
     await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
     await clearSession();
@@ -1074,10 +1076,10 @@ async function processUpdate(update) {
     if (!p || !p.ficha_tecnica) { await tgSend(chatId, 'No hay ficha técnica cargada para este producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     const pmax = p.precio_max ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
     const pmin = p.precio_min ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
-    let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n`;
-    msg += p.ficha_tecnica;
-    msg += `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n`;
-    msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
+    const footer = `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
+    const header = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n`;
+    const ficha = p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica;
+    let msg = header + ficha + footer;
     const kbFicha = [];
     const stk2 = Number(p.stock_actual) || 0;
     if (stk2 > 0) kbFicha.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
