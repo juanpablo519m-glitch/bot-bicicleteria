@@ -496,13 +496,30 @@ async function processUpdate(update) {
   }
   if (cb === 'mov_transf' && estado === 'MOV_TIPO') {
     await saveSession('MOV_TRANSF_PROD', {});
-    await tgSend(chatId, '🔄 <b>Transferencia</b>\nID del producto a transferir:', [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    await tgSend(chatId, '🔄 <b>Transferencia</b>\nBuscá el producto por marca, modelo o número de serie:', [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_TRANSF_PROD' && text) {
-    const p = stock.find(p => (p.id_producto||'').toUpperCase() === text.trim().toUpperCase());
-    if (!p) { await tgSend(chatId, `Producto "${text}" no encontrado.`); return; }
-    await saveSession('MOV_TRANSF_DEST', { id_producto: p.id_producto, marca: p.marca, modelo: p.modelo, ubic_actual: p.ubicacion || 'sin ubicación' });
+    const res = findProd(text);
+    if (!res.length) { await tgSend(chatId, `❌ No encontré "${text}". Intentá con otro nombre.`); return; }
+    if (res.length === 1) {
+      const p = res[0];
+      await saveSession('MOV_TRANSF_DEST', { id_producto: p.id_producto, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, ubic_actual: p.ubicacion || 'sin ubicación' });
+      await tgSend(chatId, `Producto: <b>${p.marca} ${p.modelo}</b>\nUbicación actual: ${p.ubicacion || 'sin ubicación'}\n\n¿A dónde lo transferís?`,
+        [[{ text: '🏪 Local', callback_data: 'transf_local' }, { text: '🏭 Galpón', callback_data: 'transf_galpon' }],
+         [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    } else {
+      await saveSession('MOV_TRANSF_PICK', {});
+      const kb = res.map(p => ([{ text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`, callback_data: `mt_pick_${p.numero_serie}` }]));
+      kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
+      await tgSend(chatId, `🔍 ${res.length} coincidencias. ¿Cuál es?`, kb);
+    }
+    return;
+  }
+  if (cb.startsWith('mt_pick_') && estado === 'MOV_TRANSF_PICK') {
+    const p = cache.stock.find(p => p.numero_serie === cb.slice(8));
+    if (!p) { await tgSend(chatId, '❌ No encontrado.'); return; }
+    await saveSession('MOV_TRANSF_DEST', { id_producto: p.id_producto, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, ubic_actual: p.ubicacion || 'sin ubicación' });
     await tgSend(chatId, `Producto: <b>${p.marca} ${p.modelo}</b>\nUbicación actual: ${p.ubicacion || 'sin ubicación'}\n\n¿A dónde lo transferís?`,
       [[{ text: '🏪 Local', callback_data: 'transf_local' }, { text: '🏭 Galpón', callback_data: 'transf_galpon' }],
        [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
@@ -523,14 +540,29 @@ async function processUpdate(update) {
   }
   if ((cb === 'mov_e' || cb === 'mov_s') && estado === 'MOV_TIPO') {
     await saveSession('MOV_PROD', { tipo: cb === 'mov_e' ? 'entrada' : 'salida' });
-    await tgSend(chatId, 'ID del producto:', [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    await tgSend(chatId, '🔍 Buscá el producto por marca, modelo o número de serie:', [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_PROD' && text) {
-    const p = stock.find(p => (p.id_producto||'').toUpperCase() === text.trim().toUpperCase());
-    if (!p) { await tgSend(chatId, `Producto "${text}" no encontrado.`); return; }
-    await saveSession('MOV_CANT', { ...datos, id_producto: p.id_producto, marca: p.marca, modelo: p.modelo });
-    await tgSend(chatId, `Producto: <b>${p.marca} ${p.modelo}</b>\nCantidad:`, [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    const res = findProd(text);
+    if (!res.length) { await tgSend(chatId, `❌ No encontré "${text}". Intentá con otro nombre.`); return; }
+    if (res.length === 1) {
+      const p = res[0];
+      await saveSession('MOV_CANT', { ...datos, id_producto: p.id_producto, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo });
+      await tgSend(chatId, `Producto: <b>${p.marca} ${p.modelo}</b>\n¿Cuántas unidades?`, [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    } else {
+      await saveSession('MOV_PROD_PICK', { tipo: datos.tipo });
+      const kb = res.map(p => ([{ text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`, callback_data: `mp_pick_${p.numero_serie}` }]));
+      kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
+      await tgSend(chatId, `🔍 ${res.length} coincidencias. ¿Cuál es?`, kb);
+    }
+    return;
+  }
+  if (cb.startsWith('mp_pick_') && estado === 'MOV_PROD_PICK') {
+    const p = cache.stock.find(p => p.numero_serie === cb.slice(8));
+    if (!p) { await tgSend(chatId, '❌ No encontrado.'); return; }
+    await saveSession('MOV_CANT', { ...datos, id_producto: p.id_producto, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo });
+    await tgSend(chatId, `Producto: <b>${p.marca} ${p.modelo}</b>\n¿Cuántas unidades?`, [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_CANT' && text) {
