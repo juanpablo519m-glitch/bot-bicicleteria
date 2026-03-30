@@ -465,7 +465,7 @@ async function processUpdate(update) {
     const cant = parseInt(cantidad);
     if (isNaN(cant) || cant <= 0) { await tgSend(chatId, 'La cantidad debe ser un número mayor a 0.'); return; }
     const prefix = tipo.toLowerCase() === 'bicicleta' ? 'B' : tipo.toLowerCase() === 'cuadro' ? 'C' : tipo.toLowerCase() === 'accesorio' ? 'A' : 'P';
-    const existentes = stock.filter(s => (s.id_producto||'').toUpperCase().startsWith(prefix)).map(s => parseInt((s.id_producto||'').slice(prefix.length))).filter(n => !isNaN(n));
+    const existentes = stock.filter(s => (s.numero_serie||'').toUpperCase().startsWith(prefix)).map(s => parseInt((s.numero_serie||'').slice(prefix.length))).filter(n => !isNaN(n));
     const siguiente = existentes.length ? Math.max(...existentes) + 1 : 1;
     const id = prefix + String(siguiente).padStart(2, '0');
     await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', stMin: stMin||'1', rodado: rodado||'', cantidad: cant, referencia });
@@ -477,7 +477,7 @@ async function processUpdate(update) {
   if (cb === 'movnew_ok' && estado === 'MOV_NUEVO_CONF') {
     const d = datos; const t = now(); const movId = `MOV-${Date.now()}`;
     await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, fecha_ingreso: t, ultima_actualizacion: t });
-    await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: '', cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
+    await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: d.id, cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     for (const u of usuarios)
@@ -529,7 +529,7 @@ async function processUpdate(update) {
   if ((cb === 'transf_local' || cb === 'transf_galpon') && estado === 'MOV_TRANSF_DEST') {
     const destino = cb === 'transf_local' ? 'local' : 'galpon';
     await saveSession('MOV_TRANSF_CONF', { ...datos, destino });
-    await tgSend(chatId, `🔄 <b>Confirmar transferencia:</b>\nProducto: ${datos.id_producto} - ${datos.marca} ${datos.modelo}\nDe: ${datos.ubic_actual} → A: ${destino}`,
+    await tgSend(chatId, `🔄 <b>Confirmar transferencia:</b>\nProducto: ${datos.numero_serie} - ${datos.marca} ${datos.modelo}\nDe: ${datos.ubic_actual} → A: ${destino}`,
       [[{ text: '✅ Confirmar', callback_data: 'transf_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
@@ -674,7 +674,7 @@ async function processUpdate(update) {
     await saveSession('FACT_DATA', {});
     await tgSend(chatId,
       '🧾 <b>Datos para factura</b>\nMandame todo en un mensaje con este formato:\n\n' +
-      '<code>Nombre, Domicilio, DNI/CUIT, Tipo (A o B), Descripción, Precio, Mail, Teléfono</code>\n\n' +
+      '<code>Nombre, Domicilio, DNI/CUIT, Tipo (A/B/C), Descripción, Precio, Mail, Teléfono</code>\n\n' +
       '<i>Ejemplo:</i>\n<code>Juan García, Av. Corrientes 123, 20-12345678-9, B, Trek Mountain Pro 29, 150000, juan@mail.com, 1155667788</code>\n' +
       '<i>Mail y teléfono son opcionales.</i>',
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
@@ -699,7 +699,7 @@ async function processUpdate(update) {
   if (cb === 'fact_ok' && estado === 'FACT_CONF') {
     const d = datos;
     await clearSession(); // anti double-click
-    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), factura_realizada: 'FALSE', mail: d.mail||'', telefono: d.telefono||'' });
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre: d.nombre, domicilio: d.domicilio, dni_cuit: d.dni_cuit, tipo: d.tipo, descripcion_producto: d.descripcion, precio_venta: d.precio, fecha: now(), forma_pago: '', numero_serie: '', factura_realizada: 'FALSE', mail: d.mail||'', telefono: d.telefono||'' });
     await tgSend(chatId, '✅ Datos de factura guardados. Revisá la hoja FACTURAS en Google Sheets.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
@@ -1108,7 +1108,7 @@ app.get('/health', (req, res) =>
 app.get('/stock-report', async (req, res) => {
   if (!cacheReady) await refreshCache();
   const lowStock = cache.stock.filter(p => {
-    if (!p.id_producto) return false;
+    if (!p.numero_serie) return false;
     const actual = parseInt(p.stock_actual || 0);
     const minimo = parseInt(p.stock_minimo || 0);
     return actual <= minimo;
