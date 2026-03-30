@@ -834,8 +834,8 @@ async function processUpdate(update) {
   if (estado === 'FACT_PROV_WAIT' && text && !cb) { await tgSend(chatId, '📷 Necesito una foto o PDF de la factura. Por favor enviá el archivo.'); return; }
   if ((cb === 'fprov_local' || cb === 'fprov_galpon') && estado === 'FACT_PROV_UBIC') {
     const ubicacion = cb === 'fprov_local' ? 'local' : 'galpon';
-    const { productos } = datos;
-    await saveSession('FACT_PROV_CONF', { productos, ubicacion });
+    const { productos, driveUrl: dUrl } = datos;
+    await saveSession('FACT_PROV_CONF', { productos, ubicacion, driveUrl: dUrl || null });
     let conf = `✅ <b>Confirmar carga en ${ubicacion}:</b>\n\n`;
     productos.forEach((p, i) => { conf += `${i+1}. ${p.marca} ${p.modelo} × ${p.cantidad}\n`; });
     conf += '\n¿Guardamos en la hoja de Compras para revisión?';
@@ -1114,7 +1114,7 @@ const app = express();
 app.use(express.json());
 
 app.get('/health', (req, res) =>
-  res.json({ ok: true, cacheReady, users: cache.usuarios.length, stock: cache.stock.length, movs: cache.movimientos.length })
+  res.json({ ok: true, cacheReady })
 );
 
 app.get('/stock-report', async (req, res) => {
@@ -1137,7 +1137,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-29-AGRUPACION`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-29-r5`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
