@@ -1,0 +1,14 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Easypanel deploy
+        run: |
+          curl -s "http://187.77.245.74:3000/api/deploy/a522d339890d5c7e68a62ff9b208a4a984f2cda7700dff8d"
+          echo "Deploy triggered"
