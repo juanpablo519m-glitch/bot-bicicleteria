@@ -30,27 +30,37 @@ const calcularPrecios = (codigoProv) => {
   // 1. Exacto
   let item = catalogo.find(r => (r.codigo_proveedor||'').toLowerCase() === codLower);
 
-  // 2. Si no hay exacto, buscar por prefijo SOLO si el código tiene guión
-  //    La parte base (antes del primer '-') debe coincidir exactamente con la del catálogo
-  if (!item && codLower.includes('-')) {
-    const baseInput = codLower.split('-')[0];
-    const candidatos = catalogo.filter(r => {
-      const cod = (r.codigo_proveedor||'').toLowerCase();
-      return cod.startsWith(codLower) && cod !== codLower && (cod.split('-')[0] === baseInput);
-    });
+  // 2. Si no hay exacto, buscar variantes:
+  //    - Si tiene guión: la base antes del primer '-' debe coincidir exactamente
+  //    - Si no tiene guión: el código completo debe ser la base exacta (antes del '-') de algún código del catálogo
+  if (!item) {
+    const baseInput = codLower.includes('-') ? codLower.split('-')[0] : codLower;
+    const candidatos = codLower.includes('-')
+      ? catalogo.filter(r => {
+          const cod = (r.codigo_proveedor||'').toLowerCase();
+          return cod.startsWith(codLower) && cod !== codLower && cod.split('-')[0] === baseInput;
+        })
+      : catalogo.filter(r => {
+          const cod = (r.codigo_proveedor||'').toLowerCase();
+          return cod !== codLower && cod.includes('-') && cod.split('-')[0] === baseInput;
+        });
+
     if (candidatos.length) {
-      // Ordenar: menor longitud primero, sin 'H' inmediatamente después del prefijo input
+      // Detectar si es variante "especial/premium": segmento que empieza con H seguido de letra o número
+      // Ej: BIN2.0-29HA → extra después del prefijo es "ha" → H+letra = especial
+      // Ej: BIN2.0-29H → extra es "h" solo = especial
+      // Ej: 15625HF → no tiene guión en variante, la H está embebida = se trata igual
+      const esEspecial = (cod) => {
+        const extra = cod.slice(codLower.length);
+        return /^h/i.test(extra) || /h[a-z\d]+$/i.test(cod.split('-').pop());
+      };
       candidatos.sort((a, b) => {
-        const aLen = (a.codigo_proveedor||'').length;
-        const bLen = (b.codigo_proveedor||'').length;
         const aCod = (a.codigo_proveedor||'').toLowerCase();
         const bCod = (b.codigo_proveedor||'').toLowerCase();
-        const aExtra = aCod.slice(codLower.length);
-        const bExtra = bCod.slice(codLower.length);
-        const aH = aExtra.startsWith('h') ? 1 : 0;
-        const bH = bExtra.startsWith('h') ? 1 : 0;
-        if (aH !== bH) return aH - bH; // sin H primero
-        return aLen - bLen; // menor longitud primero
+        const aEsp = esEspecial(aCod) ? 1 : 0;
+        const bEsp = esEspecial(bCod) ? 1 : 0;
+        if (aEsp !== bEsp) return aEsp - bEsp; // no especial primero
+        return aCod.length - bCod.length;       // menor longitud primero
       });
       item = candidatos[0];
     }
