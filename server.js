@@ -19,7 +19,9 @@ const N8N_DRIVE_WEBHOOK = process.env.N8N_DRIVE_WEBHOOK || 'https://bicicleteria
 
 // Recargo por proveedor (sobre el costo antes de aplicar márgenes)
 const RECARGO_PROVEEDOR = {
-  'dal santo': 0.05,  // 5%
+  'dal santo':       0.05,  // 5%
+  'stark':           0.21,  // 21%
+  'aries comercial': 0.21,  // 21%
 };
 const redondearCentenas = n => Math.round(n / 100) * 100;
 const calcularPrecios = (codigoProv) => {
