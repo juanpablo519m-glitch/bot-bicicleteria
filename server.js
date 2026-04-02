@@ -17,6 +17,33 @@ const SHEET_ID  = process.env.SHEET_ID;
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const N8N_DRIVE_WEBHOOK = process.env.N8N_DRIVE_WEBHOOK || 'https://bicicleteria-n8n.fs5can.easypanel.host/webhook/drive-upload';
 
+// Recargo por proveedor (sobre el costo antes de aplicar márgenes)
+const RECARGO_PROVEEDOR = {
+  'dal santo': 0.05,  // 5%
+};
+const redondearCentenas = n => Math.round(n / 100) * 100;
+const calcularPrecios = (codigoProv) => {
+  if (!codigoProv) return null;
+  const codLower = codigoProv.trim().toLowerCase();
+  const entrada = cache.facturas; // no usado, buscamos en catálogo
+  // Buscar en CATALOGO_PROVEEDORES (cargado aparte, no en cache principal)
+  // Se accede via cache._catalogo si está disponible
+  const catalogo = cache._catalogo || [];
+  const item = catalogo.find(r => (r.codigo_proveedor||'').toLowerCase() === codLower);
+  if (!item || !item.costo) return null;
+  const costo = parseFloat((item.costo||'0').replace(',','.'));
+  if (!costo) return null;
+  const recargo = RECARGO_PROVEEDOR[(item.proveedor||'').toLowerCase()] || 0;
+  const costoFinal = costo * (1 + recargo);
+  return {
+    costo: Math.round(costoFinal),
+    precio_max: redondearCentenas(costoFinal * 1.60),
+    precio_min: redondearCentenas(costoFinal * 1.35),
+    proveedor: item.proveedor,
+    detalle: item.detalle_original
+  };
+};
+
 const SA = {
   client_email: process.env.SA_EMAIL,
   private_key: (process.env.SA_PRIVATE_KEY || '').replace(/\\n/g, '\n')
@@ -83,7 +110,7 @@ const CACHE_KEY = {
 };
 
 // ── Cache en memoria ───────────────────────────────────────────────────────────
-const cache = { usuarios: [], sesiones: [], stock: [], movimientos: [], facturas: [] };
+const cache = { usuarios: [], sesiones: [], stock: [], movimientos: [], facturas: [], _catalogo: [] };
 let cacheReady = false;
 
 async function loadSheet(name) {
@@ -106,9 +133,9 @@ async function refreshCache() {
   if (_cacheRefreshing) return;
   _cacheRefreshing = true;
   try {
-    const [rUsuarios, rSesiones, rStock, rMovimientos, rFacturas] = await Promise.allSettled([
+    const [rUsuarios, rSesiones, rStock, rMovimientos, rFacturas, rCatalogo] = await Promise.allSettled([
       loadSheet('USUARIOS'), loadSheet('SESIONES'), loadSheet('STOCK'),
-      loadSheet('MOVIMIENTOS_PENDIENTES'), loadSheet('FACTURAS')
+      loadSheet('MOVIMIENTOS_PENDIENTES'), loadSheet('FACTURAS'), loadSheet('CATALOGO_PROVEEDORES')
     ]);
     if (rUsuarios.status    === 'fulfilled') cache.usuarios    = rUsuarios.value;
     else console.error('[cache] USUARIOS falló:', rUsuarios.reason?.message);
@@ -118,6 +145,8 @@ async function refreshCache() {
     else console.error('[cache] STOCK falló:', rStock.reason?.message);
     if (rMovimientos.status === 'fulfilled') cache.movimientos = rMovimientos.value;
     else console.error('[cache] MOVIMIENTOS falló:', rMovimientos.reason?.message);
+    if (rCatalogo.status    === 'fulfilled') cache._catalogo   = rCatalogo.value;
+    else console.error('[cache] CATALOGO_PROVEEDORES falló:', rCatalogo.reason?.message);
     if (rFacturas.status    === 'fulfilled') cache.facturas    = rFacturas.value;
     else console.error('[cache] FACTURAS falló:', rFacturas.reason?.message);
     const stock = cache.stock;
@@ -512,18 +541,24 @@ async function processUpdate(update) {
     await saveSession('MOV_NUEVO', {});
     await tgSend(chatId,
       '📦 <b>Nuevo producto + entrada de stock</b>\nMandame todo en un mensaje:\n\n' +
-      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, talle, color, numero_serie, cantidad, referencia</code>\n\n' +
-      'numero_serie: dejalo vacío para generar automático (B01, A01...) o poné el código si ya existe\n\n' +
-      '<i>Ejemplo bici nueva:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, M, Rojo, , 1, Compra ABC</code>\n\n' +
-      '<i>Ejemplo accesorio existente (misma serie):</i>\n<code>accesorio, Shimano, Cadena XT, Cadena 11v, 8000, 5, , , , A01, 10, Proveedor XYZ</code>',
+      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, talle, color, numero_serie, cantidad, referencia, codigo_proveedor</code>\n\n' +
+      '• <b>precio</b>: dejalo en 0 si ponés código de proveedor (se calcula solo)\n• <b>numero_serie</b>: vacío = auto (B01, A01...)\n• <b>codigo_proveedor</b>: opcional, ej: <code>BIN7.0-29C</code>\n\n' +
+      '<i>Ejemplo con precio auto:</i>\n<code>bicicleta, Raleigh, 7.0, Negro con gris, 0, 1, 29, 17, Negro, B005, 1, Compra Dal Santo, BIN7.0-29C</code>\n\n' +
+      '<i>Ejemplo sin código proveedor:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, M, Rojo, , 1, Compra ABC</code>',
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_NUEVO' && text) {
     const p = text.split(',').map(x => x.trim());
     if (p.length < 12) { await tgSend(chatId, 'Faltan datos. Necesito al menos 12 campos separados por coma.'); return; }
-    const [tipo, marca, modelo, desc, precio, stMin, rodado, talle, color, serieInput, cantidad, ...refParts] = p;
-    const referencia = refParts.join(',').trim() || 'Sin referencia';
+    const [tipo, marca, modelo, desc, precioRaw, stMin, rodado, talle, color, serieInput, cantidad, ref, codProv] = p;
+    const referencia = ref || 'Sin referencia';
+    const codigoProv = codProv || '';
+    // Calcular precios desde catálogo si se dio código de proveedor
+    const preciosAuto = codigoProv ? calcularPrecios(codigoProv) : null;
+    const precio = preciosAuto ? String(preciosAuto.precio_max) : (precioRaw || '0');
+    const precioMin = preciosAuto ? String(preciosAuto.precio_min) : (precioRaw || '0');
+    const precioCosto = preciosAuto ? String(preciosAuto.costo) : '0';
     const cant = parseInt(cantidad);
     if (isNaN(cant) || cant <= 0) { await tgSend(chatId, 'La cantidad debe ser un número mayor a 0.'); return; }
     // Auto-generar serie si no se ingresó
@@ -532,7 +567,7 @@ async function processUpdate(update) {
     const siguiente = existentes.length ? Math.max(...existentes) + 1 : 1;
     const idAuto = prefix + String(siguiente).padStart(2, '0');
     const id = serieInput || idAuto;
-    await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', stMin: stMin||'1', rodado: rodado||'', talle: talle||'', color: color||'', cantidad: cant, referencia });
+    await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', precioMin: precioMin||'0', precioCosto: precioCosto||'0', codigoProv, stMin: stMin||'1', rodado: rodado||'', talle: talle||'', color: color||'', cantidad: cant, referencia });
     // Verificar si ya existe producto con misma marca+modelo+talle+color+serie
     const match = cache.stock.find(s =>
       (s.numero_serie||'').toLowerCase() === id.toLowerCase() &&
@@ -555,8 +590,11 @@ async function processUpdate(update) {
          [{ text: '➕ Crear con serie nueva (auto)', callback_data: 'movnew_ok' }],
          [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     } else {
+      const precioInfo = preciosAuto
+        ? `Costo: $${Number(precioCosto).toLocaleString('es-AR')} | Máx: $${Number(precio).toLocaleString('es-AR')} | Mín: $${Number(precioMin).toLocaleString('es-AR')}\n<i>📋 ${preciosAuto.proveedor} — ${preciosAuto.detalle}</i>`
+        : `Precio: $${precio||'0'}`;
       await tgSend(chatId,
-        `📦 <b>Confirmar nuevo producto:</b>\nSerie: <b>${id}</b>${serieInput ? '' : ' (auto)'}\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\nPrecio: $${precio||'0'} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
+        `📦 <b>Confirmar nuevo producto:</b>\nSerie: <b>${id}</b>${serieInput ? '' : ' (auto)'}\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\n${precioInfo} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
         [[{ text: '✅ Confirmar', callback_data: 'movnew_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     }
     return;
@@ -575,7 +613,7 @@ async function processUpdate(update) {
   }
   if (cb === 'movnew_ok' && estado === 'MOV_NUEVO_CONF') {
     const d = datos; const t = now(); const movId = `MOV-${Date.now()}`;
-    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: '0', precio_max: d.precio, precio_min: d.precio, rodado: d.rodado, talle: d.talle||'', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: d.color||'' });
+    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: d.precioCosto||'0', precio_max: d.precio, precio_min: d.precioMin||d.precio, rodado: d.rodado, talle: d.talle||'', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: d.color||'' });
     await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: d.id, cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
