@@ -389,10 +389,30 @@ async function processUpdate(update) {
     await tgSend(chatId, `📦 <b>${titulo}</b> — ${variants.length} variante(s)\n¿Cuál buscás?`, kb);
   };
 
+  // Extrae rodado y talle embebidos en el campo modelo y devuelve valores normalizados
+  // Ej: "7.0 R29 17\"" → { modelo: "7.0", rodado: "29", talle: "17" }
+  const normalizarCampos = (p) => {
+    let modelo = (p.modelo || '').trim();
+    let rodado = (p.rodado && p.rodado !== 'n/a') ? p.rodado : '';
+    let talle  = (p.talle  && p.talle  !== 'n/a') ? p.talle  : '';
+    // Extraer R+número del modelo si rodado está vacío (ej: "7.0 R29" → rodado "29")
+    if (!rodado) {
+      const mRod = modelo.match(/\bR(\d+(?:\.\d+)?)\b/i);
+      if (mRod) { rodado = mRod[1]; modelo = modelo.replace(mRod[0], '').trim(); }
+    }
+    // Extraer número+" al final del modelo si talle está vacío (ej: "M4.0 17\"" → talle "17")
+    if (!talle) {
+      const mTalle = modelo.match(/\b(\d+(?:\.\d+)?)[""]\s*$/);
+      if (mTalle) { talle = mTalle[1]; modelo = modelo.replace(mTalle[0], '').trim(); }
+    }
+    return { modelo, rodado, talle };
+  };
+
   const showProdList = async (res, query) => {
     const groups = {};
     res.forEach(p => {
-      const key = `${(p.marca||'').toLowerCase()}|${(p.modelo||'').toLowerCase()}|${(p.rodado||'').toLowerCase()}`;
+      const n = normalizarCampos(p);
+      const key = `${(p.marca||'').toLowerCase()}|${n.modelo.toLowerCase()}|${n.rodado.toLowerCase()}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(p);
     });
@@ -402,7 +422,8 @@ async function processUpdate(update) {
     const kb = groupKeys.map(key => {
       const variants = groups[key];
       const p = variants[0];
-      const nombre = `${p.marca}${p.modelo ? ' '+p.modelo : ''}${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}`;
+      const n = normalizarCampos(p);
+      const nombre = `${p.marca}${n.modelo ? ' '+n.modelo : ''}${n.rodado ? ' R'+n.rodado : ''}`;
       if (variants.length === 1) return [{ text: nombre, callback_data: `prod_${p.numero_serie}` }];
       return [{ text: `${nombre} (${variants.length})`, callback_data: `grp_${p.numero_serie}` }];
     });
@@ -1044,7 +1065,15 @@ async function processUpdate(update) {
     const refSerie = cb.slice(4);
     const ref = cache.stock.find(p => p.numero_serie === refSerie);
     if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
-    const variants = cache.stock.filter(p => (Number(p.stock_actual)||0) > 0 && !['vendido','inactivo'].includes((p.estado_unidad||'').toLowerCase()) && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase() && (p.modelo||'').toLowerCase() === (ref.modelo||'').toLowerCase() && (p.rodado||'').toLowerCase() === (ref.rodado||'').toLowerCase());
+    const refN = normalizarCampos(ref);
+    const variants = cache.stock.filter(p => {
+      const pN = normalizarCampos(p);
+      return (Number(p.stock_actual)||0) > 0
+        && !['vendido','inactivo'].includes((p.estado_unidad||'').toLowerCase())
+        && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase()
+        && pN.modelo.toLowerCase() === refN.modelo.toLowerCase()
+        && pN.rodado.toLowerCase() === refN.rodado.toLowerCase();
+    });
     await showVariants(variants);
     return;
   }
