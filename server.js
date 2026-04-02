@@ -25,11 +25,21 @@ const redondearCentenas = n => Math.round(n / 100) * 100;
 const calcularPrecios = (codigoProv) => {
   if (!codigoProv) return null;
   const codLower = codigoProv.trim().toLowerCase();
-  const entrada = cache.facturas; // no usado, buscamos en catálogo
-  // Buscar en CATALOGO_PROVEEDORES (cargado aparte, no en cache principal)
-  // Se accede via cache._catalogo si está disponible
   const catalogo = cache._catalogo || [];
-  const item = catalogo.find(r => (r.codigo_proveedor||'').toLowerCase() === codLower);
+  // 1. Buscar coincidencia exacta
+  let item = catalogo.find(r => (r.codigo_proveedor||'').toLowerCase() === codLower);
+  // 2. Si no hay exacta, buscar por prefijo priorizando sin variante hidráulica
+  //    Lógica: el código base es el prefijo dado. Las variantes sin H son letras simples (A,B,C...L)
+  //    Las variantes H son HA,HB,HC... Se prefiere la variante sin H.
+  if (!item) {
+    const candidatos = catalogo.filter(r => (r.codigo_proveedor||'').toLowerCase().startsWith(codLower));
+    // Preferir los que la parte extra (después del prefijo) NO empieza con 'h'
+    const sinH = candidatos.filter(r => {
+      const extra = (r.codigo_proveedor||'').toLowerCase().slice(codLower.length);
+      return extra.length > 0 && !extra.startsWith('h');
+    });
+    item = sinH.length ? sinH[0] : candidatos[0];
+  }
   if (!item || !item.costo) return null;
   const costo = parseFloat((item.costo||'0').replace(',','.'));
   if (!costo) return null;
@@ -40,7 +50,8 @@ const calcularPrecios = (codigoProv) => {
     precio_max: redondearCentenas(costoFinal * 1.60),
     precio_min: redondearCentenas(costoFinal * 1.35),
     proveedor: item.proveedor,
-    detalle: item.detalle_original
+    detalle: item.detalle_original,
+    codigo_usado: item.codigo_proveedor
   };
 };
 
