@@ -277,9 +277,9 @@ async function sortStock() {
       requests: [{ sortRange: {
         range: { sheetId: _stockSheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: HEADERS.STOCK.length },
         sortSpecs: [
-          { dimensionIndex: 1, sortOrder: 'ASCENDING' },   // marca
-          { dimensionIndex: 2, sortOrder: 'ASCENDING' },   // modelo
-          { dimensionIndex: 13, sortOrder: 'ASCENDING' }   // talle
+          { dimensionIndex: HEADERS.STOCK.indexOf('marca'),  sortOrder: 'ASCENDING' },
+          { dimensionIndex: HEADERS.STOCK.indexOf('modelo'), sortOrder: 'ASCENDING' },
+          { dimensionIndex: HEADERS.STOCK.indexOf('talle'),  sortOrder: 'ASCENDING' }
         ]
       }}]
     }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
@@ -329,6 +329,10 @@ function now() {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
   }).split('/').join('-').replace(', ', ' ');
 }
+
+// Valores que se tratan como "sin dato" en toda la app
+const EMPTY_VALS = new Set(['-', 'n/n', 'n/a', '']);
+const isEmpty = v => !v || EMPTY_VALS.has((v + '').toLowerCase().trim());
 
 // ── Fuzzy search ───────────────────────────────────────────────────────────────
 function norm(s) {
@@ -426,8 +430,8 @@ async function processUpdate(update) {
     const stk = Number(p.stock_actual) || 0;
     const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
     const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
-    let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${p.rodado&&p.rodado!=='n/a'?' R'+p.rodado:''}\n`;
-    if (p.talle || p.color) msg += `${p.talle ? 'Talle: '+p.talle : ''}${p.talle && p.color ? ' | ' : ''}${p.color ? 'Color: '+p.color : ''}\n`;
+    let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${isEmpty(p.rodado) ? '' : ' R'+p.rodado}\n`;
+    if (!isEmpty(p.talle) || !isEmpty(p.color)) msg += `${!isEmpty(p.talle) ? 'Talle: '+p.talle : ''}${!isEmpty(p.talle) && !isEmpty(p.color) ? ' | ' : ''}${!isEmpty(p.color) ? 'Color: '+p.color : ''}\n`;
     msg += `${p.descripcion||''}\n`;
     msg += `📍 ${p.ubicacion||'local'} | Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
@@ -443,11 +447,11 @@ async function processUpdate(update) {
   const showVariants = async (variants) => {
     if (!variants || !variants.length) { await tgSend(chatId, '❌ No hay variantes disponibles en stock para este modelo.', [[{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     const first = variants[0];
-    const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${first.rodado&&first.rodado!=='n/a'?' R'+first.rodado:''}`;
+    const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${isEmpty(first.rodado) ? '' : ' R'+first.rodado}`;
     const kb = variants.map(p => {
       let label = '';
-      if (p.talle) label += 'T: '+p.talle;
-      if (p.color) label += (label ? ' - ' : '') + p.color;
+      if (!isEmpty(p.talle)) label += 'T: '+p.talle;
+      if (!isEmpty(p.color)) label += (label ? ' - ' : '') + p.color;
       if (!label) label = p.descripcion ? p.descripcion.substring(0, 25) : p.numero_serie;
       return [{ text: label, callback_data: `prod_${p.numero_serie}` }];
     });
@@ -459,8 +463,8 @@ async function processUpdate(update) {
   // Ej: "7.0 R29 17\"" → { modelo: "7.0", rodado: "29", talle: "17" }
   const normalizarCampos = (p) => {
     let modelo = (p.modelo || '').trim();
-    let rodado = (p.rodado && p.rodado !== 'n/a') ? p.rodado : '';
-    let talle  = (p.talle  && p.talle  !== 'n/a') ? p.talle  : '';
+    let rodado = isEmpty(p.rodado) ? '' : p.rodado;
+    let talle  = isEmpty(p.talle)  ? '' : p.talle;
     // Extraer R+número del modelo si rodado está vacío (ej: "7.0 R29" → rodado "29")
     if (!rodado) {
       const mRod = modelo.match(/\bR(\d+(?:\.\d+)?)\b/i);
@@ -1141,11 +1145,9 @@ async function processUpdate(update) {
     const ref = cache.stock.find(p => p.numero_serie === refSerie);
     if (!ref) { await tgSend(chatId, '❌ Modelo no encontrado.'); return; }
     const refN = normalizarCampos(ref);
-    const variants = cache.stock.filter(p => {
+    const variants = stock.filter(p => {
       const pN = normalizarCampos(p);
-      return (Number(p.stock_actual)||0) > 0
-        && !['vendido','inactivo'].includes((p.estado_unidad||'').toLowerCase())
-        && (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase()
+      return (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase()
         && pN.modelo.toLowerCase() === refN.modelo.toLowerCase()
         && pN.rodado.toLowerCase() === refN.rodado.toLowerCase();
     });
@@ -1284,8 +1286,9 @@ async function processUpdate(update) {
     if (!p) { await tgSend(chatId, '❌ No se encontró el producto en stock. Recargá los datos e intentá de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
     await clearSession(); // anti double-click: limpiar sesión antes de procesar
     const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
-    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: now(), factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
-    await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p?.estado_unidad || 'disponible'), ultima_actualizacion: now() }, 'numero_serie');
+    const ventaTs = now();
+    await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: ventaTs, factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
+    await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p.estado_unidad || 'disponible'), ultima_actualizacion: ventaTs }, 'numero_serie');
     await tgSend(chatId,
       `✅ <b>Venta registrada</b>\n\n📦 ${descripcion}\n👤 ${nombre}\n💵 $${precio} — ${forma_pago}\n\n📋 Factura pendiente en Google Sheets.`,
       [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -1320,7 +1323,7 @@ const app = express();
 app.use(express.json());
 
 app.get('/health', (req, res) =>
-  res.json({ ok: true, cacheReady })
+  res.json({ ok: true, cacheReady, users: cache.usuarios.length, stock: cache.stock.length, movs: cache.movimientos.length })
 );
 
 app.get('/stock-report', async (req, res) => {
@@ -1343,7 +1346,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-03-30-r6`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-04-02`);
   await refreshCache();
   setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
 });
