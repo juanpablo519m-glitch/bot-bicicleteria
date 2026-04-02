@@ -353,6 +353,23 @@ function fuzzy(query, target) {
   return t.split(/\s+/).some(w => levenshtein(q,w) <= Math.max(1, Math.floor(q.length/4)));
 }
 
+// ── Normalizar campos con rodado/talle embebidos en modelo ────────────────────
+// Ej: "7.0 R29 17\"" → { modelo: "7.0", rodado: "29", talle: "17" }
+function normalizarCampos(p) {
+  let modelo = (p.modelo || '').trim();
+  let rodado = isEmpty(p.rodado) ? '' : p.rodado;
+  let talle  = isEmpty(p.talle)  ? '' : p.talle;
+  if (!rodado) {
+    const mRod = modelo.match(/\bR(\d+(?:\.\d+)?)\b/i);
+    if (mRod) { rodado = mRod[1]; modelo = modelo.replace(mRod[0], '').trim(); }
+  }
+  if (!talle) {
+    const mTalle = modelo.match(/\b(\d+(?:\.\d+)?)[""]\s*$/);
+    if (mTalle) { talle = mTalle[1]; modelo = modelo.replace(mTalle[0], '').trim(); }
+  }
+  return { modelo, rodado, talle };
+}
+
 // ── Menú principal ─────────────────────────────────────────────────────────────
 function mainMenu(rol) {
   const kb = [[{ text: '📦 Consultar Stock', callback_data: 'stock' }]];
@@ -459,40 +476,20 @@ async function processUpdate(update) {
     await tgSend(chatId, `📦 <b>${titulo}</b> — ${variants.length} variante(s)\n¿Cuál buscás?`, kb);
   };
 
-  // Extrae rodado y talle embebidos en el campo modelo y devuelve valores normalizados
-  // Ej: "7.0 R29 17\"" → { modelo: "7.0", rodado: "29", talle: "17" }
-  const normalizarCampos = (p) => {
-    let modelo = (p.modelo || '').trim();
-    let rodado = isEmpty(p.rodado) ? '' : p.rodado;
-    let talle  = isEmpty(p.talle)  ? '' : p.talle;
-    // Extraer R+número del modelo si rodado está vacío (ej: "7.0 R29" → rodado "29")
-    if (!rodado) {
-      const mRod = modelo.match(/\bR(\d+(?:\.\d+)?)\b/i);
-      if (mRod) { rodado = mRod[1]; modelo = modelo.replace(mRod[0], '').trim(); }
-    }
-    // Extraer número+" al final del modelo si talle está vacío (ej: "M4.0 17\"" → talle "17")
-    if (!talle) {
-      const mTalle = modelo.match(/\b(\d+(?:\.\d+)?)[""]\s*$/);
-      if (mTalle) { talle = mTalle[1]; modelo = modelo.replace(mTalle[0], '').trim(); }
-    }
-    return { modelo, rodado, talle };
-  };
-
   const showProdList = async (res, query) => {
     const groups = {};
     res.forEach(p => {
       const n = normalizarCampos(p);
       const key = `${(p.marca||'').toLowerCase()}|${n.modelo.toLowerCase()}|${n.rodado.toLowerCase()}`;
       if (!groups[key]) groups[key] = [];
-      groups[key].push(p);
+      groups[key].push({ p, n });
     });
     const groupKeys = Object.keys(groups);
-    if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]]); return; }
+    if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]].map(x => x.p)); return; }
     let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí un modelo:`;
     const kb = groupKeys.map(key => {
       const variants = groups[key];
-      const p = variants[0];
-      const n = normalizarCampos(p);
+      const { p, n } = variants[0];
       const nombre = `${p.marca}${n.modelo ? ' '+n.modelo : ''}${n.rodado ? ' R'+n.rodado : ''}`;
       if (variants.length === 1) return [{ text: nombre, callback_data: `prod_${p.numero_serie}` }];
       return [{ text: `${nombre} (${variants.length})`, callback_data: `grp_${p.numero_serie}` }];
@@ -690,7 +687,7 @@ async function processUpdate(update) {
          [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     } else {
       await saveSession('MOV_TRANSF_PICK', {});
-      const kb = res.map(p => ([{ text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`, callback_data: `mt_pick_${p.numero_serie}` }]));
+      const kb = res.map(p => ([{ text: `${p.marca} ${p.modelo}${isEmpty(p.rodado) ? '' : ' R'+p.rodado} (${p.numero_serie})`, callback_data: `mt_pick_${p.numero_serie}` }]));
       kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
       await tgSend(chatId, `🔍 ${res.length} coincidencias. ¿Cuál es?`, kb);
     }
@@ -734,7 +731,7 @@ async function processUpdate(update) {
       await tgSend(chatId, `Producto: <b>${p.marca} ${p.modelo}</b>\n¿Cuántas unidades?`, [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     } else {
       await saveSession('MOV_PROD_PICK', { tipo: datos.tipo });
-      const kb = res.map(p => ([{ text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`, callback_data: `mp_pick_${p.numero_serie}` }]));
+      const kb = res.map(p => ([{ text: `${p.marca} ${p.modelo}${isEmpty(p.rodado) ? '' : ' R'+p.rodado} (${p.numero_serie})`, callback_data: `mp_pick_${p.numero_serie}` }]));
       kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
       await tgSend(chatId, `🔍 ${res.length} coincidencias. ¿Cuál es?`, kb);
     }
