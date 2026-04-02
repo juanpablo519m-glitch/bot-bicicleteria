@@ -71,11 +71,16 @@ const calcularPrecios = (codigoProv) => {
   if (!item || !item.costo) return null;
   const costo = parseFloat((item.costo||'0').replace(',','.'));
   if (!costo) return null;
-  // Buscar recargo con fuzzy: exacto primero, luego Levenshtein sobre proveedores conocidos
-  const provItem = (item.proveedor||'').toLowerCase().trim();
+  // Buscar recargo con fuzzy por palabras: cada palabra del proveedor del catálogo
+  // debe matchear con alguna palabra del input con distancia <= 1
+  const provItem = norm(item.proveedor || '');
   const provKeys = Object.keys(RECARGO_PROVEEDOR);
-  const provMatch = provKeys.find(k => k === provItem)
-    || provKeys.find(k => levenshtein(norm(provItem), norm(k)) <= Math.max(1, Math.floor(Math.min(provItem.length, k.length) / 4)));
+  const fuzzyProv = (a, b) => {
+    const wa = a.split(/\s+/), wb = b.split(/\s+/);
+    return wa.every(w => wb.some(v => w === v || levenshtein(w, v) <= 1));
+  };
+  const provMatch = provKeys.find(k => norm(k) === provItem)
+    || provKeys.find(k => fuzzyProv(norm(k), provItem));
   const recargo = provMatch ? RECARGO_PROVEEDOR[provMatch] : 0;
   const costoFinal = costo * (1 + recargo);
   return {
