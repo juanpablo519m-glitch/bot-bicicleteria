@@ -26,20 +26,36 @@ const calcularPrecios = (codigoProv) => {
   if (!codigoProv) return null;
   const codLower = codigoProv.trim().toLowerCase();
   const catalogo = cache._catalogo || [];
-  // 1. Buscar coincidencia exacta
+
+  // 1. Exacto
   let item = catalogo.find(r => (r.codigo_proveedor||'').toLowerCase() === codLower);
-  // 2. Si no hay exacta, buscar por prefijo priorizando sin variante hidráulica
-  //    Lógica: el código base es el prefijo dado. Las variantes sin H son letras simples (A,B,C...L)
-  //    Las variantes H son HA,HB,HC... Se prefiere la variante sin H.
-  if (!item) {
-    const candidatos = catalogo.filter(r => (r.codigo_proveedor||'').toLowerCase().startsWith(codLower));
-    // Preferir los que la parte extra (después del prefijo) NO empieza con 'h'
-    const sinH = candidatos.filter(r => {
-      const extra = (r.codigo_proveedor||'').toLowerCase().slice(codLower.length);
-      return extra.length > 0 && !extra.startsWith('h');
+
+  // 2. Si no hay exacto, buscar por prefijo SOLO si el código tiene guión
+  //    La parte base (antes del primer '-') debe coincidir exactamente con la del catálogo
+  if (!item && codLower.includes('-')) {
+    const baseInput = codLower.split('-')[0];
+    const candidatos = catalogo.filter(r => {
+      const cod = (r.codigo_proveedor||'').toLowerCase();
+      return cod.startsWith(codLower) && cod !== codLower && (cod.split('-')[0] === baseInput);
     });
-    item = sinH.length ? sinH[0] : candidatos[0];
+    if (candidatos.length) {
+      // Ordenar: menor longitud primero, sin 'H' inmediatamente después del prefijo input
+      candidatos.sort((a, b) => {
+        const aLen = (a.codigo_proveedor||'').length;
+        const bLen = (b.codigo_proveedor||'').length;
+        const aCod = (a.codigo_proveedor||'').toLowerCase();
+        const bCod = (b.codigo_proveedor||'').toLowerCase();
+        const aExtra = aCod.slice(codLower.length);
+        const bExtra = bCod.slice(codLower.length);
+        const aH = aExtra.startsWith('h') ? 1 : 0;
+        const bH = bExtra.startsWith('h') ? 1 : 0;
+        if (aH !== bH) return aH - bH; // sin H primero
+        return aLen - bLen; // menor longitud primero
+      });
+      item = candidatos[0];
+    }
   }
+
   if (!item || !item.costo) return null;
   const costo = parseFloat((item.costo||'0').replace(',','.'));
   if (!costo) return null;
