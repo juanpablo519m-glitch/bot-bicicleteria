@@ -363,7 +363,7 @@ function fuzzy(query, target) {
   if (!q) return false;
   if (t.includes(q)) return true;
   if (q.length < 3) return false;
-  return t.split(/\s+/).some(w => levenshtein(q,w) <= Math.max(1, Math.floor(q.length/4)));
+  return t.split(/\s+/).some(w => levenshtein(q,w) <= Math.max(1, Math.floor(q.length/3)));
 }
 
 // ── Normalizar campos con rodado/talle embebidos en modelo ────────────────────
