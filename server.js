@@ -458,8 +458,8 @@ async function processUpdate(update) {
 
   const showProdDetail = async (p) => {
     const stk = Number(p.stock_actual) || 0;
-    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
+    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
     let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${isEmpty(p.rodado) ? '' : ' R'+p.rodado}\n`;
     if (!isEmpty(p.talle) || !isEmpty(p.color)) msg += `${!isEmpty(p.talle) ? 'Talle: '+p.talle : ''}${!isEmpty(p.talle) && !isEmpty(p.color) ? ' | ' : ''}${!isEmpty(p.color) ? 'Color: '+p.color : ''}\n`;
     msg += `${p.descripcion||''}\n`;
@@ -642,7 +642,7 @@ async function processUpdate(update) {
          [{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     } else {
       const precioInfo = preciosAuto
-        ? `Costo: $${Number(precioCosto).toLocaleString('es-AR')} | Máx: $${Number(precio).toLocaleString('es-AR')} | Mín: $${Number(precioMin).toLocaleString('es-AR')}\n<i>📋 ${preciosAuto.proveedor} — ${preciosAuto.detalle}</i>`
+        ? `Costo: $${Number(precioCosto).toLocaleString('es-AR', { maximumFractionDigits: 0 })} | Máx: $${Number(precio).toLocaleString('es-AR', { maximumFractionDigits: 0 })} | Mín: $${Number(precioMin).toLocaleString('es-AR', { maximumFractionDigits: 0 })}\n<i>📋 ${preciosAuto.proveedor} — ${preciosAuto.detalle}</i>`
         : `Precio: $${precio||'0'}`;
       await tgSend(chatId,
         `📦 <b>Confirmar nuevo producto:</b>\nSerie: <b>${id}</b>${serieInput ? '' : ' (auto)'}\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\n${precioInfo} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
@@ -1135,8 +1135,8 @@ async function processUpdate(update) {
     if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     if (p.ficha_tecnica) {
       // Ir directo a ficha técnica
-      const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-      const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+      const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
+      const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
       const fichaCorta = ('• ' + (p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica)).replace(/, /g, '\n• ');
       let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${fichaCorta}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
       const kbF = [];
@@ -1226,7 +1226,7 @@ async function processUpdate(update) {
     const p = cache.stock.find(p => p.numero_serie === serie);
     if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
     const desc = [p.marca, p.modelo, p.rodado ? 'R'+p.rodado : '', p.talle ? 'T'+p.talle : '', p.color].filter(Boolean).join(' ');
-    const precioHint = p.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR')})` : '';
+    const precioHint = p.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 })})` : '';
     await saveSession('VENTA_DATA', { numero_serie: serie, descripcion: desc });
     await tgSend(chatId,
       `💰 <b>Registrar Venta</b>\n📦 ${desc}\n\n` +
@@ -1280,7 +1280,7 @@ async function processUpdate(update) {
   if (cb === 'venta_edit' && estado === 'VENTA_CONF') {
     const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
     const p = cache.stock.find(p => p.numero_serie === numero_serie);
-    const precioHint = p?.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR')})` : '';
+    const precioHint = p?.precio_max ? ` (sugerido: $${Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 })})` : '';
     await saveSession('VENTA_DATA', { numero_serie, descripcion });
     await tgSend(chatId,
       `✏️ <b>Editar datos</b>\n📦 ${descripcion}\n\n` +
@@ -1310,8 +1310,8 @@ async function processUpdate(update) {
     const serie = cb.replace('ficha_', '');
     const p = stock.find(s => s.numero_serie === serie);
     if (!p || !p.ficha_tecnica) { await tgSend(chatId, 'No hay ficha técnica cargada para este producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
-    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
-    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
+    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
+    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
     const footer = `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
     const header = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n`;
     const ficha = ('• ' + (p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica)).replace(/, /g, '\n• ');
