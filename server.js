@@ -24,13 +24,14 @@ const RECARGO_PROVEEDOR = {
   'aries comercial': 0.21,  // 21%
 };
 const redondearCentenas = n => Math.round(n / 100) * 100;
+const normCod = s => (s||'').trim().toLowerCase().replace(/_/g, '-');
 const calcularPrecios = (codigoProv) => {
   if (!codigoProv) return null;
-  const codLower = codigoProv.trim().toLowerCase();
+  const codLower = normCod(codigoProv);
   const catalogo = cache._catalogo || [];
 
-  // 1. Exacto
-  let item = catalogo.find(r => (r.codigo_proveedor||'').toLowerCase() === codLower);
+  // 1. Exacto (normalizando separadores)
+  let item = catalogo.find(r => normCod(r.codigo_proveedor) === codLower);
 
   // 2. Si no hay exacto, buscar variantes:
   //    - Si tiene guión: la base antes del primer '-' debe coincidir exactamente
@@ -39,11 +40,11 @@ const calcularPrecios = (codigoProv) => {
     const baseInput = codLower.includes('-') ? codLower.split('-')[0] : codLower;
     const candidatos = codLower.includes('-')
       ? catalogo.filter(r => {
-          const cod = (r.codigo_proveedor||'').toLowerCase();
+          const cod = normCod(r.codigo_proveedor);
           return cod.startsWith(codLower) && cod !== codLower && cod.split('-')[0] === baseInput;
         })
       : catalogo.filter(r => {
-          const cod = (r.codigo_proveedor||'').toLowerCase();
+          const cod = normCod(r.codigo_proveedor);
           return cod !== codLower && cod.includes('-') && cod.split('-')[0] === baseInput;
         });
 
@@ -145,7 +146,7 @@ const HEADERS = {
   SESIONES:               ['telegram_id','estado','datos','ts'],
   USUARIOS:               ['telegram_id','nombre','rol','activo','fecha_alta'],
   MOVIMIENTOS_PENDIENTES: ['id_movimiento','tipo','estado','id_producto','numero_serie','cantidad','descripcion_movimiento','referencia_doc','hash_duplicado','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color'],
+  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color','codigo_proveedor'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','mail','telefono','factura_realizada'],
   VENTAS_ACCESORIOS:      ['fecha','descripcion','precio','forma_pago','operador'],
@@ -1136,7 +1137,7 @@ async function processUpdate(update) {
       // Ir directo a ficha técnica
       const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR') : '-';
       const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
-      const fichaCorta = p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica;
+      const fichaCorta = ('• ' + (p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica)).replace(/, /g, '\n• ');
       let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${fichaCorta}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
       const kbF = [];
       if ((Number(p.stock_actual)||0) > 0) kbF.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
@@ -1313,7 +1314,7 @@ async function processUpdate(update) {
     const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR') : '-';
     const footer = `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
     const header = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n`;
-    const ficha = p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica;
+    const ficha = ('• ' + (p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica)).replace(/, /g, '\n• ');
     let msg = header + ficha + footer;
     const kbFicha = [];
     const stk2 = Number(p.stock_actual) || 0;
