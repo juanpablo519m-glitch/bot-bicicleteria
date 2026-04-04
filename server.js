@@ -483,6 +483,7 @@ async function processUpdate(update) {
       if (!isEmpty(p.talle)) label += 'T: '+p.talle;
       if (!isEmpty(p.color)) label += (label ? ' - ' : '') + p.color;
       if (!label) label = p.descripcion ? p.descripcion.substring(0, 25) : p.numero_serie;
+      label += ` (${p.ubicacion || 'local'})`;
       return [{ text: label, callback_data: `prod_${p.numero_serie}` }];
     });
     kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
