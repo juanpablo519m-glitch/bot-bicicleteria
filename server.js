@@ -189,8 +189,11 @@ async function refreshCache() {
     ]);
     if (rUsuarios.status    === 'fulfilled') cache.usuarios    = rUsuarios.value;
     else console.error('[cache] USUARIOS falló:', rUsuarios.reason?.message);
-    if (rSesiones.status    === 'fulfilled') cache.sesiones    = rSesiones.value;
-    else console.error('[cache] SESIONES falló:', rSesiones.reason?.message);
+    // SESIONES: solo cargar del sheet en el primer arranque (cacheReady=false).
+    // En refreshes periódicos mantener la memoria — evita borrar sesiones activas
+    // que aún no se escribieron al sheet (escritura async).
+    if (!cacheReady && rSesiones.status === 'fulfilled') cache.sesiones = rSesiones.value;
+    else if (rSesiones.status === 'rejected') console.error('[cache] SESIONES falló:', rSesiones.reason?.message);
     if (rStock.status       === 'fulfilled') cache.stock       = rStock.value;
     else console.error('[cache] STOCK falló:', rStock.reason?.message);
     if (rMovimientos.status === 'fulfilled') cache.movimientos = rMovimientos.value;
