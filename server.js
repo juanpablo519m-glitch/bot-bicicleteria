@@ -467,7 +467,7 @@ async function processUpdate(update) {
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
     if (stk > 0) kb.unshift([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
-    if (p.ficha_tecnica) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
+    if (!isEmpty(p.ficha_tecnica)) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
     }
@@ -1133,7 +1133,7 @@ async function processUpdate(update) {
     const serie = cb.replace('prod_', '');
     const p = stock.find(s => s.numero_serie === serie);
     if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
-    if (p.ficha_tecnica) {
+    if (!isEmpty(p.ficha_tecnica)) {
       // Ir directo a ficha técnica
       const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
       const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
@@ -1309,7 +1309,7 @@ async function processUpdate(update) {
   if (cb.startsWith('ficha_')) {
     const serie = cb.replace('ficha_', '');
     const p = stock.find(s => s.numero_serie === serie);
-    if (!p || !p.ficha_tecnica) { await tgSend(chatId, 'No hay ficha técnica cargada para este producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
+    if (!p || isEmpty(p.ficha_tecnica)) { await tgSend(chatId, 'No hay ficha técnica cargada para este producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
     const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
     const footer = `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
