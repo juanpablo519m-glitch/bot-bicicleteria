@@ -501,9 +501,9 @@ async function processUpdate(update) {
       groups[key].push({ p, n });
     });
     const groupKeys = Object.keys(groups).sort((a, b) => {
-      const maxA = Math.max(...groups[a].map(x => Number(x.p.precio_max) || 0));
-      const maxB = Math.max(...groups[b].map(x => Number(x.p.precio_max) || 0));
-      if (maxB !== maxA) return maxB - maxA;
+      const rodA = Math.max(...groups[a].map(x => Number(x.n.rodado) || 0));
+      const rodB = Math.max(...groups[b].map(x => Number(x.n.rodado) || 0));
+      if (rodB !== rodA) return rodB - rodA;
       return a.localeCompare(b);
     });
     if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]].map(x => x.p)); return; }
