@@ -294,7 +294,7 @@ async function sortStock() {
         range: { sheetId: _stockSheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: HEADERS.STOCK.length },
         sortSpecs: [
           { dimensionIndex: HEADERS.STOCK.indexOf('marca'),     sortOrder: 'ASCENDING' },
-          { dimensionIndex: HEADERS.STOCK.indexOf('modelo'),    sortOrder: 'ASCENDING' },
+          { dimensionIndex: HEADERS.STOCK.indexOf('modelo'),    sortOrder: 'DESCENDING' },
           { dimensionIndex: HEADERS.STOCK.indexOf('precio_max'), sortOrder: 'DESCENDING' }
         ]
       }}]
