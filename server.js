@@ -146,12 +146,12 @@ const HEADERS = {
   SESIONES:               ['telegram_id','estado','datos','ts'],
   USUARIOS:               ['telegram_id','nombre','rol','activo','fecha_alta'],
   MOVIMIENTOS_PENDIENTES: ['id_movimiento','tipo','estado','id_producto','numero_serie','cantidad','descripcion_movimiento','referencia_doc','hash_duplicado','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
-  STOCK:                  ['tipo','marca','modelo','numero_serie','descripcion','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color','codigo_proveedor'],
+  STOCK:                  ['tipo','marca','modelo','numero_serie','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color','codigo_proveedor'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','mail','telefono','factura_realizada'],
   VENTAS_ACCESORIOS:      ['fecha','descripcion','precio','forma_pago','operador'],
   VENTAS_BICICLETAS:      ['fecha','descripcion','precio','forma_pago','operador'],
-  COMPRAS:                ['fecha','tipo','marca','modelo','descripcion','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado']
+  COMPRAS:                ['fecha','tipo','marca','modelo','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado','color']
 };
 
 const CACHE_KEY = {
@@ -454,7 +454,7 @@ async function processUpdate(update) {
       (Number(p.stock_actual) || 0) > 0 &&
       !['vendido','inactivo'].includes((p.estado_unidad || '').toLowerCase()) &&
       (fuzzy(q, p.numero_serie||'') || fuzzy(q, p.marca||'') ||
-       fuzzy(q, p.modelo||'')       || fuzzy(q, p.descripcion||''))
+       fuzzy(q, p.modelo||''))
     );
   };
 
@@ -464,7 +464,6 @@ async function processUpdate(update) {
     const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
     let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${isEmpty(p.rodado) ? '' : ' R'+p.rodado}\n`;
     if (!isEmpty(p.talle) || !isEmpty(p.color)) msg += `${!isEmpty(p.talle) ? 'Talle: '+p.talle : ''}${!isEmpty(p.talle) && !isEmpty(p.color) ? ' | ' : ''}${!isEmpty(p.color) ? 'Color: '+p.color : ''}\n`;
-    msg += `${p.descripcion||''}\n`;
     msg += `📍 ${p.ubicacion||'local'} | Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
@@ -484,7 +483,7 @@ async function processUpdate(update) {
       let label = '';
       if (!isEmpty(p.talle)) label += 'T: '+p.talle;
       if (!isEmpty(p.color)) label += (label ? ' - ' : '') + p.color;
-      if (!label) label = p.descripcion ? p.descripcion.substring(0, 25) : p.numero_serie;
+      if (!label) label = p.numero_serie;
       label += ` (${p.ubicacion || 'local'})`;
       return [{ text: label, callback_data: `prod_${p.numero_serie}` }];
     });
@@ -611,17 +610,17 @@ async function processUpdate(update) {
     await saveSession('MOV_NUEVO', {});
     await tgSend(chatId,
       '📦 <b>Nuevo producto + entrada de stock</b>\nMandame todo en un mensaje:\n\n' +
-      '<code>tipo, marca, modelo, descripcion, precio, stock_minimo, rodado, talle, color, numero_serie, cantidad, referencia, codigo_proveedor</code>\n\n' +
+      '<code>tipo, marca, modelo, precio, stock_minimo, rodado, talle, color, numero_serie, cantidad, referencia, codigo_proveedor</code>\n\n' +
       '• <b>precio</b>: dejalo en 0 si ponés código de proveedor (se calcula solo)\n• <b>numero_serie</b>: vacío = auto (B01, A01...)\n• <b>codigo_proveedor</b>: opcional, ej: <code>BIN7.0-29C</code>\n\n' +
-      '<i>Ejemplo con precio auto:</i>\n<code>bicicleta, Raleigh, 7.0, Negro con gris, 0, 1, 29, 17, Negro, B005, 1, Compra Dal Santo, BIN7.0-29C</code>\n\n' +
-      '<i>Ejemplo sin código proveedor:</i>\n<code>bicicleta, Giant, Talon 29, MTB aluminio, 280000, 1, 29, M, Rojo, , 1, Compra ABC</code>',
+      '<i>Ejemplo con precio auto:</i>\n<code>bicicleta, Raleigh, 7.0, 0, 1, 29, 17, Negro, B005, 1, Compra Dal Santo, BIN7.0-29C</code>\n\n' +
+      '<i>Ejemplo sin código proveedor:</i>\n<code>bicicleta, Giant, Talon 29, 280000, 1, 29, M, Rojo, , 1, Compra ABC</code>',
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'MOV_NUEVO' && text) {
     const p = text.split(',').map(x => x.trim());
-    if (p.length < 12) { await tgSend(chatId, 'Faltan datos. Necesito al menos 12 campos separados por coma.'); return; }
-    const [tipo, marca, modelo, desc, precioRaw, stMin, rodado, talle, color, serieInput, cantidad, ref, codProv] = p;
+    if (p.length < 11) { await tgSend(chatId, 'Faltan datos. Necesito al menos 11 campos separados por coma.'); return; }
+    const [tipo, marca, modelo, precioRaw, stMin, rodado, talle, color, serieInput, cantidad, ref, codProv] = p;
     const referencia = ref || 'Sin referencia';
     const codigoProv = codProv || '';
     // Calcular precios desde catálogo si se dio código de proveedor
@@ -637,7 +636,7 @@ async function processUpdate(update) {
     const siguiente = existentes.length ? Math.max(...existentes) + 1 : 1;
     const idAuto = prefix + String(siguiente).padStart(2, '0');
     const id = serieInput || idAuto;
-    await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, desc, precio: precio||'0', precioMin: precioMin||'0', precioCosto: precioCosto||'0', codigoProv, stMin: stMin||'1', rodado: rodado||'', talle: talle||'', color: color||'', cantidad: cant, referencia });
+    await saveSession('MOV_NUEVO_CONF', { id, tipo, marca, modelo, precio: precio||'0', precioMin: precioMin||'0', precioCosto: precioCosto||'0', codigoProv, stMin: stMin||'1', rodado: rodado||'', talle: talle||'', color: color||'', cantidad: cant, referencia });
     // Verificar si ya existe producto con misma marca+modelo+talle+color+serie
     const match = cache.stock.find(s =>
       (s.numero_serie||'').toLowerCase() === id.toLowerCase() &&
@@ -664,7 +663,7 @@ async function processUpdate(update) {
         ? `Costo: $${Number(precioCosto).toLocaleString('es-AR', { maximumFractionDigits: 0 })} | Máx: $${Number(precio).toLocaleString('es-AR', { maximumFractionDigits: 0 })} | Mín: $${Number(precioMin).toLocaleString('es-AR', { maximumFractionDigits: 0 })}\n<i>📋 ${preciosAuto.proveedor} — ${preciosAuto.detalle}</i>`
         : `Precio: $${precio||'0'}`;
       await tgSend(chatId,
-        `📦 <b>Confirmar nuevo producto:</b>\nSerie: <b>${id}</b>${serieInput ? '' : ' (auto)'}\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\nDescripción: ${desc}\n${precioInfo} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
+        `📦 <b>Confirmar nuevo producto:</b>\nSerie: <b>${id}</b>${serieInput ? '' : ' (auto)'}\nTipo: ${tipo} | ${marca} ${modelo}${rodado ? ' R'+rodado : ''}${talle ? ' T'+talle : ''}${color ? ' '+color : ''}\n${precioInfo} | Stock mín: ${stMin||'1'}\n\n📥 Entrada: ${cant} unidades\nRef: ${referencia}`,
         [[{ text: '✅ Confirmar', callback_data: 'movnew_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     }
     return;
@@ -683,7 +682,7 @@ async function processUpdate(update) {
   }
   if (cb === 'movnew_ok' && estado === 'MOV_NUEVO_CONF') {
     const d = datos; const t = now(); const movId = `MOV-${Date.now()}`;
-    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, descripcion: d.desc, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: d.precioCosto||'0', precio_max: d.precio, precio_min: d.precioMin||d.precio, rodado: d.rodado, talle: d.talle||'', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: d.color||'' });
+    await appendRow('STOCK', { tipo: d.tipo, marca: d.marca, modelo: d.modelo, numero_serie: d.id, ubicacion: 'local', stock_actual: '0', stock_minimo: d.stMin, estado_unidad: 'disponible', precio_costo: d.precioCosto||'0', precio_max: d.precio, precio_min: d.precioMin||d.precio, rodado: d.rodado, talle: d.talle||'', fecha_ingreso: t, ultima_actualizacion: t, ficha_tecnica: '', foto_url: '', color: d.color||'' });
     await appendRow('MOVIMIENTOS_PENDIENTES', { id_movimiento: movId, tipo: 'entrada', estado: 'pendiente', id_producto: d.id, numero_serie: d.id, cantidad: d.cantidad, descripcion_movimiento: `entrada ${d.cantidad}u ${d.id}`, referencia_doc: d.referencia, hash_duplicado: `${d.id}-entrada-${d.cantidad}-${d.referencia}`, telegram_id_operador: userId, nombre_operador: user.nombre, telegram_id_aprobador: '', nombre_aprobador: '', fecha_creacion: t, fecha_aprobacion: '', motivo_rechazo: '', notas_aprobador: '' });
     await clearSession();
     await tgSend(chatId, `✅ Producto <b>${d.id}</b> creado y movimiento <b>${movId}</b> enviado para aprobación.`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -995,20 +994,19 @@ async function processUpdate(update) {
       const tipo = TIPOS_VALIDOS.includes(p[0].toLowerCase()) ? p[idx++].toLowerCase() : 'bicicleta';
       const marca = p[idx++] || '';
       const modelo = p[idx++] || '';
-      const descripcion = p[idx++] || '';
       const cantidad = parseInt(p[idx++]) || 1;
       // El precio puede tener puntos de miles (100.000) — eliminarlos y tomar solo dígitos
       const precioRaw = (p[idx++] || '0').replace(/\./g, '').replace(',', '.');
       const precio_unitario = precioRaw || '0';
       const rodado = p[idx++] || '';
-      productos.push({ tipo, marca, modelo, descripcion, cantidad, precio_unitario, rodado });
+      productos.push({ tipo, marca, modelo, cantidad, precio_unitario, rodado });
     }
     if (!productos.length) {
-      await tgSend(chatId, '❌ No pude leer los productos. Revisá el formato:\n<code>Tipo, Marca, Modelo, Descripción, Cantidad, Precio, Rodado</code>\nUn producto por línea.');
+      await tgSend(chatId, '❌ No pude leer los productos. Revisá el formato:\n<code>Tipo, Marca, Modelo, Cantidad, Precio, Rodado</code>\nUn producto por línea.');
       return;
     }
     let resumen = `📦 <b>${productos.length} producto(s) a cargar:</b>\n\n`;
-    productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.descripcion}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
+    productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
     if (resumen.length > 3800) resumen = resumen.substring(0, 3800) + '\n<i>...y más</i>\n\n';
     resumen += '¿Dónde ingresan estos productos?';
     await saveSession('FACT_PROV_UBIC', { productos, driveUrl: null });
@@ -1026,7 +1024,7 @@ async function processUpdate(update) {
     const mimeType = isPhoto ? 'image/jpeg' : (message.document.mime_type || 'application/pdf');
     const ext      = isPhoto ? 'jpg' : (filePath.split('.').pop() || 'pdf');
     const fileName = `factura_${now().replace(/\//g,'-').replace(/ /g,'_').replace(/:/g,'')}.${ext}`;
-    const ocrPrompt = 'Analizá esta factura de proveedor. Extraé TODOS los productos/artículos. Devolvé SOLO un JSON array sin markdown ni texto extra: [{"tipo":"bicicleta","marca":"","modelo":"","descripcion":"","cantidad":1,"precio_unitario":"0","rodado":""}]. Tipos: bicicleta, cuadro, accesorio, otro. rodado: número para bicis/cuadros (ej 26, 29), vacío para accesorios.';
+    const ocrPrompt = 'Analizá esta factura de proveedor. Extraé TODOS los productos/artículos. Devolvé SOLO un JSON array sin markdown ni texto extra: [{"tipo":"bicicleta","marca":"","modelo":"","cantidad":1,"precio_unitario":"0","rodado":""}]. Tipos: bicicleta, cuadro, accesorio, otro. rodado: número para bicis/cuadros (ej 26, 29), vacío para accesorios.';
     const groqBody = { model: 'meta-llama/llama-4-scout-17b-16e-instruct', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: fileUrl } }, { type: 'text', text: ocrPrompt }] }], max_tokens: 1000 };
     const [ocrRes, driveRes] = await Promise.allSettled([
       axios.post('https://api.groq.com/openai/v1/chat/completions', groqBody, { headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } }),
@@ -1039,7 +1037,7 @@ async function processUpdate(update) {
     try { const s = rawText.indexOf('['); const e = rawText.lastIndexOf(']'); if (s !== -1 && e !== -1) productos = JSON.parse(rawText.slice(s, e+1)); } catch {}
     if (!productos.length) { await tgSend(chatId, '❌ No pude detectar productos. Intentá con una foto más nítida.'); await clearSession(); return; }
     let resumen = `📦 <b>Detecté ${productos.length} producto(s):</b>\n\n`;
-    productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.descripcion}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
+    productos.forEach((p, i) => { resumen += `${i+1}. <b>${p.marca} ${p.modelo}</b> (${p.tipo})${p.rodado ? ' R'+p.rodado : ''}\n   ${p.cantidad}u × $${p.precio_unitario}\n\n`; });
     if (resumen.length > 3700) resumen = resumen.substring(0, 3700) + '\n<i>...y más</i>\n\n';
     resumen += '¿Dónde ingresan estos productos?';
     if (driveUrl) resumen += `\n\n💾 <a href="${driveUrl}">Factura guardada en Drive</a>`;
@@ -1062,7 +1060,7 @@ async function processUpdate(update) {
     const { productos, ubicacion, driveUrl } = datos; const t = now();
     await clearSession(); // anti double-click
     for (const p of productos)
-      await appendRow('COMPRAS', { fecha: t, tipo: p.tipo, marca: p.marca||'', modelo: p.modelo||'', descripcion: p.descripcion||'', cantidad: String(p.cantidad||1), precio_unitario: p.precio_unitario||'0', rodado: p.rodado||'', ubicacion, estado: 'pendiente', foto_drive: driveUrl||'' });
+      await appendRow('COMPRAS', { fecha: t, tipo: p.tipo, marca: p.marca||'', modelo: p.modelo||'', cantidad: String(p.cantidad||1), precio_unitario: p.precio_unitario||'0', rodado: p.rodado||'', ubicacion, estado: 'pendiente', foto_drive: driveUrl||'' });
     let confMsg = `✅ <b>${productos.length} producto(s)</b> guardados en la hoja <b>COMPRAS</b>. Revisalos y pasalos al stock cuando quieras.`;
     if (driveUrl) confMsg += `\n💾 <a href="${driveUrl}">Ver factura en Drive</a>`;
     await tgSend(chatId, confMsg, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -1100,7 +1098,7 @@ async function processUpdate(update) {
     let resultados = stock.filter(p =>
       p.ubicacion === origen &&
       (cat === '' || (p.tipo||'').toLowerCase() === cat) &&
-      (fuzzy(text, p.marca||'') || fuzzy(text, p.modelo||'') || fuzzy(text, p.numero_serie||'') || fuzzy(text, p.descripcion||''))
+      (fuzzy(text, p.marca||'') || fuzzy(text, p.modelo||'') || fuzzy(text, p.numero_serie||''))
     );
     if (!resultados.length) {
       await tgSend(chatId, `❌ No encontré "${text}" en ${origen}. Intentá con otro nombre:`,
@@ -1113,7 +1111,6 @@ async function processUpdate(update) {
       let detalle = `📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`;
       if (!isEmpty(p.talle)) detalle += `\n📐 Talle: ${p.talle}`;
       if (!isEmpty(p.color)) detalle += `\n🎨 Color: ${p.color}`;
-      if (!isEmpty(p.descripcion)) detalle += `\n📝 ${p.descripcion}`;
       await tgSend(chatId,
         `🔄 <b>Confirmar transferencia:</b>\n${detalle}\n📍 ${origen} → ${destino}`,
         [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
