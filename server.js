@@ -505,8 +505,12 @@ async function processUpdate(update) {
       const variants = groups[key];
       const { p, n } = variants[0];
       const nombre = `${p.marca}${n.modelo ? ' '+n.modelo : ''}${n.rodado ? ' R'+n.rodado : ''}`;
-      if (variants.length === 1) return [{ text: nombre, callback_data: `prod_${p.numero_serie}` }];
-      return [{ text: `${nombre} (${variants.length})`, callback_data: `grp_${p.numero_serie}` }];
+      const ubic = p.ubicacion || 'local';
+      if (variants.length === 1) return [{ text: `${nombre} (${ubic})`, callback_data: `prod_${p.numero_serie}` }];
+      // múltiples variantes: mostrar ubicaciones distintas si las hay
+      const ubicaciones = [...new Set(variants.map(v => v.p.ubicacion || 'local'))];
+      const ubicStr = ubicaciones.length === 1 ? ubicaciones[0] : ubicaciones.join('/');
+      return [{ text: `${nombre} — ${variants.length} colores (${ubicStr})`, callback_data: `grp_${p.numero_serie}` }];
     });
     kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
     await tgSend(chatId, msg, kb);
