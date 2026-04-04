@@ -538,6 +538,13 @@ async function processUpdate(update) {
   const clearSession = () => saveSession('', {});
 
   // ── /start ─────────────────────────────────────────────────────────────────
+  if (text === '/refresh' && ['administrador','aprobador'].includes(rol)) {
+    await tgSend(chatId, '🔄 Actualizando datos...');
+    await refreshCache();
+    await tgSend(chatId, `✅ Listo. Stock: ${cache.stock.filter(s=>s.numero_serie||s.marca).length} productos`, [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    return;
+  }
+
   if (text === '/start' || cb === 'main_menu') {
     await clearSession();
     await tgSend(chatId, `Hola <b>${user.nombre}</b> (${rol}) 👋\n¿Qué querés hacer?`, mainMenu(rol));
@@ -1445,5 +1452,5 @@ app.post('/webhook', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Bot bicicletería en puerto ${PORT} — v2026-04-02`);
   await refreshCache();
-  setInterval(refreshCache, 60 * 1000); // refrescar cache cada 1 min
+  setInterval(refreshCache, 20 * 1000); // refrescar cache cada 20s
 });
