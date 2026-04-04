@@ -466,7 +466,7 @@ async function processUpdate(update) {
     msg += `📍 ${p.ubicacion||'local'} | Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
-    if (stk > 0) kb.unshift([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
+    if (stk > 0) kb.unshift([{ text: '⚡ Venta rápida', callback_data: `vrap_${p.numero_serie}` }, { text: '🧾 Con factura', callback_data: `vender_${p.numero_serie}` }]);
     kb.unshift([{ text: '📋 Ver detalle completo', callback_data: `ficha_${p.numero_serie}` }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
@@ -1333,7 +1333,7 @@ async function processUpdate(update) {
       msg += `\n📋 Ficha técnica: n/n`;
     }
     const kbFicha = [];
-    if (stk2 > 0) kbFicha.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
+    if (stk2 > 0) kbFicha.push([{ text: '⚡ Venta rápida', callback_data: `vrap_${p.numero_serie}` }, { text: '🧾 Con factura', callback_data: `vender_${p.numero_serie}` }]);
     kbFicha.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
@@ -1342,8 +1342,69 @@ async function processUpdate(update) {
     return;
   }
 
-  // Fallback
-  if (text && !cb) { await tgSend(chatId, 'No entendí ese mensaje. Usá el menú 👇', mainMenu(rol)); await clearSession(); }
+  // ── Venta rápida ─────────────────────────────────────────────────────────
+  if (cb.startsWith('vrap_')) {
+    const serie = cb.slice(5);
+    const p = cache.stock.find(p => p.numero_serie === serie);
+    if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
+    const desc = [p.marca, p.modelo, p.rodado ? 'R'+p.rodado : '', p.talle ? 'T'+p.talle : '', p.color].filter(Boolean).join(' ');
+    const precioSug = Number(p.precio_max) > 0 ? `$${Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'sin precio cargado';
+    await saveSession('VRAP_DATA', { numero_serie: serie, descripcion: desc, precio: Number(p.precio_max) || 0 });
+    await tgSend(chatId,
+      `⚡ <b>Venta rápida</b>\n📦 ${desc}\n💰 Precio sugerido: ${precioSug}\n\nMandá nombre y forma de pago separados por coma:\n<code>Juan Pérez, Efectivo</code>`,
+      [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (estado === 'VRAP_DATA' && text) {
+    const parts = text.split(',').map(s => s.trim());
+    if (parts.length < 2) { await tgSend(chatId, '❌ Mandá nombre y forma de pago separados por coma.\nEj: Juan Pérez, Efectivo'); return; }
+    const nombre = parts[0];
+    const forma_pago = parts.slice(1).join(', ');
+    const precioStr = datos.precio > 0 ? `$${Number(datos.precio).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'sin precio';
+    await saveSession('VRAP_CONF', { ...datos, nombre, forma_pago });
+    await tgSend(chatId,
+      `⚡ <b>Confirmar venta rápida:</b>\n\n📦 ${datos.descripcion}\n👤 ${nombre}\n💰 ${precioStr} — ${forma_pago}`,
+      [[{ text: '✅ Confirmar', callback_data: 'vrap_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (cb === 'vrap_ok' && estado === 'VRAP_CONF') {
+    const { numero_serie, descripcion, nombre, forma_pago, precio } = datos;
+    const p = cache.stock.find(p => p.numero_serie === numero_serie);
+    if (!p) { await tgSend(chatId, '❌ No se encontró el producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
+    await clearSession();
+    const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
+    const ventaTs = now();
+    const hoja = (p.tipo||'').toLowerCase().includes('bici') ? 'VENTAS_BICICLETAS' : 'VENTAS_ACCESORIOS';
+    await appendRow(hoja, { fecha: ventaTs, descripcion, precio: precio || '', forma_pago, operador: user.nombre });
+    await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p.estado_unidad || 'disponible'), ultima_actualizacion: ventaTs }, 'numero_serie');
+    const precioStr = precio > 0 ? `$${Number(precio).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'sin precio';
+    await tgSend(chatId,
+      `✅ <b>Venta rápida registrada</b>\n\n📦 ${descripcion}\n👤 ${nombre}\n💰 ${precioStr} — ${forma_pago}`,
+      [[{ text: '📦 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    return;
+  }
+
+  // Fallback: si no hay estado de sesión, intentar búsqueda de stock
+  if (text && !cb) {
+    let res = findProd(text);
+    if (!res.length) {
+      const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const sets = words.map(w => findProd(w));
+      if (sets.length) {
+        const ids = sets[0].map(p => p.numero_serie);
+        const inter = sets.slice(1).reduce((acc, s) => acc.filter(id => s.some(p => p.numero_serie === id)), ids);
+        res = inter.length ? stock.filter(p => inter.includes(p.numero_serie)) : sets.flat().filter((p,i,a) => a.findIndex(x=>x.numero_serie===p.numero_serie)===i);
+      }
+    }
+    await clearSession();
+    if (!res.length) {
+      await tgSend(chatId, 'No entendí ese mensaje. Usá el menú 👇', mainMenu(rol));
+    } else if (res.length === 1) {
+      await showProdDetail(res[0]);
+    } else {
+      await showProdList(res, text);
+    }
+  }
 }
 
 // ── Express ────────────────────────────────────────────────────────────────────
