@@ -1333,11 +1333,9 @@ async function processUpdate(update) {
     msg += `🔢 Serie: ${p.numero_serie||'n/n'}\n`;
     msg += `📐 Rodado: ${isEmpty(p.rodado)?'n/n':p.rodado} | Talle: ${isEmpty(p.talle)?'n/n':p.talle}\n`;
     msg += `🎨 Color: ${isEmpty(p.color)?'n/n':p.color}\n`;
-    msg += `📝 Descripción: ${isEmpty(p.descripcion)?'n/n':p.descripcion}\n`;
     msg += `📍 Ubicación: ${p.ubicacion||'n/n'} | Stock: ${stk2} | ${p.estado_unidad||'n/n'}\n`;
     msg += `💰 Precio máx: ${pmax} | Mín: ${pmin} | Costo: ${pcost}\n`;
     msg += `📦 Cod. proveedor: ${isEmpty(p.codigo_proveedor)?'n/n':p.codigo_proveedor}\n`;
-    msg += `📅 Ingreso: ${isEmpty(p.fecha_ingreso)?'n/n':p.fecha_ingreso}\n`;
     if (!isEmpty(p.ficha_tecnica)) {
       const fichaRaw = p.ficha_tecnica.length > 3000 ? p.ficha_tecnica.substring(0, 3000) + '...' : p.ficha_tecnica;
       const fichaItems = fichaRaw.split(/[,;\n]+|(?<!\d)\.\s+/).map(s => s.trim()).filter(Boolean);
