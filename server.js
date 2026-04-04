@@ -349,7 +349,7 @@ const isEmpty = v => !v || EMPTY_VALS.has((v + '').toLowerCase().trim());
 
 // ── Fuzzy search ───────────────────────────────────────────────────────────────
 function norm(s) {
-  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
 }
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
@@ -370,8 +370,8 @@ function fuzzy(query, target) {
 // Ej: "7.0 R29 17\"" → { modelo: "7.0", rodado: "29", talle: "17" }
 function normalizarCampos(p) {
   let modelo = (p.modelo || '').trim();
-  let rodado = isEmpty(p.rodado) ? '' : p.rodado;
-  let talle  = isEmpty(p.talle)  ? '' : p.talle;
+  let rodado = isEmpty(p.rodado) ? '' : String(p.rodado);
+  let talle  = isEmpty(p.talle)  ? '' : String(p.talle);
   if (!rodado) {
     const mRod = modelo.match(/\bR(\d+(?:\.\d+)?)\b/i);
     if (mRod) { rodado = mRod[1]; modelo = modelo.replace(mRod[0], '').trim(); }
