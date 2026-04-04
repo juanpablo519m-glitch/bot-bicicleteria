@@ -247,7 +247,7 @@ async function appendRow(sheetName, data) {
       if (!colA[i] || !colA[i][0]) { nextRow = i + 1; break; }
     }
     return axios.put(
-      `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A${nextRow}:${endCol}${nextRow}?valueInputOption=USER_ENTERED`,
+      `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A${nextRow}:${endCol}${nextRow}?valueInputOption=RAW`,
       { values }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
   }).catch(e => console.error('[bg append]', sheetName, e.message));
@@ -269,7 +269,7 @@ async function upsertRow(sheetName, data, keyField) {
     const values = [hdrs.map(h => String(merged[h] ?? ''))];
     getToken().then(token =>
       axios.put(
-        `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A${rowNum}:${endCol}${rowNum}?valueInputOption=USER_ENTERED`,
+        `${SHEETS_BASE}/${SHEET_ID}/values/${sheetName}!A${rowNum}:${endCol}${rowNum}?valueInputOption=RAW`,
         { values }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
       )
     ).catch(e => console.error('[bg upsert]', sheetName, e.message));
@@ -317,7 +317,7 @@ async function syncVistaUbicacion(id_producto, ubicacion) {
     if (rowIdx < 0) { console.log('[vista] producto no encontrado en VISTA_BICIS'); return; }
     const rowNum = rowIdx + 1;
     const res = await axios.put(
-      `${SHEETS_BASE}/${SHEET_ID}/values/VISTA_BICIS!G${rowNum}?valueInputOption=USER_ENTERED`,
+      `${SHEETS_BASE}/${SHEET_ID}/values/VISTA_BICIS!G${rowNum}?valueInputOption=RAW`,
       { values: [[ubicacion]] },
       { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
