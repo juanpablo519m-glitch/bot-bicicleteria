@@ -1090,18 +1090,25 @@ async function processUpdate(update) {
     }
     if (resultados.length === 1) {
       const p = resultados[0];
-      await saveSession('TRANSF2_CONF', { ...datos, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
+      await saveSession('TRANSF2_CONF', { ...datos, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'', talle: p.talle||'', color: p.color||'' });
+      let detalle = `📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`;
+      if (!isEmpty(p.talle)) detalle += `\n📐 Talle: ${p.talle}`;
+      if (!isEmpty(p.color)) detalle += `\n🎨 Color: ${p.color}`;
+      if (!isEmpty(p.descripcion)) detalle += `\n📝 ${p.descripcion}`;
       await tgSend(chatId,
-        `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})\n📍 ${origen} → ${destino}`,
+        `🔄 <b>Confirmar transferencia:</b>\n${detalle}\n📍 ${origen} → ${destino}`,
         [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
       return;
     }
     // Múltiples resultados — mostrar botones
     await saveSession('TRANSF2_PICK', { ...datos });
-    const kb = resultados.map(p => ([{
-      text: `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.ubicacion})`,
-      callback_data: `t2_pick_${p.numero_serie}`
-    }]));
+    const kb = resultados.map(p => {
+      let label = `${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''}`;
+      if (!isEmpty(p.talle)) label += ` T:${p.talle}`;
+      if (!isEmpty(p.color)) label += ` ${p.color}`;
+      label += ` (${p.numero_serie})`;
+      return [{ text: label, callback_data: `t2_pick_${p.numero_serie}` }];
+    });
     kb.push([{ text: '❌ Cancelar', callback_data: 'main_menu' }]);
     await tgSend(chatId, `🔍 Encontré ${resultados.length} coincidencias. ¿Cuál es?`, kb);
     return;
@@ -1111,9 +1118,13 @@ async function processUpdate(update) {
     const p = cache.stock.find(p => p.numero_serie === id);
     if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
     const { origen, destino } = datos;
-    await saveSession('TRANSF2_CONF', { ...datos, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'' });
+    await saveSession('TRANSF2_CONF', { ...datos, numero_serie: p.numero_serie, marca: p.marca, modelo: p.modelo, rodado: p.rodado||'', talle: p.talle||'', color: p.color||'' });
+    let detalle = `📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})`;
+    if (!isEmpty(p.talle)) detalle += `\n📐 Talle: ${p.talle}`;
+    if (!isEmpty(p.color)) detalle += `\n🎨 Color: ${p.color}`;
+    if (!isEmpty(p.descripcion)) detalle += `\n📝 ${p.descripcion}`;
     await tgSend(chatId,
-      `🔄 <b>Confirmar transferencia:</b>\n📦 ${p.marca} ${p.modelo}${p.rodado ? ' R'+p.rodado : ''} (${p.numero_serie})\n📍 ${origen} → ${destino}`,
+      `🔄 <b>Confirmar transferencia:</b>\n${detalle}\n📍 ${origen} → ${destino}`,
       [[{ text: '✅ Confirmar', callback_data: 't2_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
