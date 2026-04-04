@@ -165,7 +165,7 @@ let cacheReady = false;
 
 async function loadSheet(name) {
   const token = await getToken();
-  const r = await axios.get(`${SHEETS_BASE}/${SHEET_ID}/values/${name}!A:Z`,
+  const r = await axios.get(`${SHEETS_BASE}/${SHEET_ID}/values/${name}!A:Z?valueRenderOption=UNFORMATTED_VALUE`,
     { headers: { Authorization: `Bearer ${token}` } });
   const rows = r.data.values || [];
   if (rows.length < 2) return [];
