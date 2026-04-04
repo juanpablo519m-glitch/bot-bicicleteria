@@ -392,7 +392,6 @@ function mainMenu(rol) {
   if (['operador','aprobador','administrador'].includes(rol)) {
     kb.push([{ text: '💰 Registrar Venta', callback_data: 'venta_rapida' }]);
     kb.push([{ text: '🔄 Transferir Producto', callback_data: 'transf2' }]);
-    kb.push([{ text: '📋 Registrar Movimiento', callback_data: 'movimiento' }]);
   }
   if (rol === 'administrador') kb.push([{ text: '⚙️ Panel Admin', callback_data: 'admin' }]);
   return kb;
