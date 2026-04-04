@@ -500,7 +500,12 @@ async function processUpdate(update) {
       if (!groups[key]) groups[key] = [];
       groups[key].push({ p, n });
     });
-    const groupKeys = Object.keys(groups);
+    const groupKeys = Object.keys(groups).sort((a, b) => {
+      const maxA = Math.max(...groups[a].map(x => Number(x.p.precio_max) || 0));
+      const maxB = Math.max(...groups[b].map(x => Number(x.p.precio_max) || 0));
+      if (maxB !== maxA) return maxB - maxA;
+      return a.localeCompare(b);
+    });
     if (groupKeys.length === 1) { await showVariants(groups[groupKeys[0]].map(x => x.p)); return; }
     let msg = `📦 <b>${res.length} resultados para "${query}"</b>\nElegí un modelo:`;
     const kb = groupKeys.map(key => {
