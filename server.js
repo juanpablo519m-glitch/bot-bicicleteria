@@ -1340,7 +1340,7 @@ async function processUpdate(update) {
     msg += `📅 Ingreso: ${isEmpty(p.fecha_ingreso)?'n/n':p.fecha_ingreso}\n`;
     if (!isEmpty(p.ficha_tecnica)) {
       const fichaRaw = p.ficha_tecnica.length > 3000 ? p.ficha_tecnica.substring(0, 3000) + '...' : p.ficha_tecnica;
-      const fichaItems = fichaRaw.split(/,\s*/).map(s => s.trim()).filter(Boolean);
+      const fichaItems = fichaRaw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
       const fichaLista = `• ${p.tipo||'Producto'} ${isEmpty(p.rodado)?'':('R'+p.rodado+' ')}\n` +
         fichaItems.map(i => `• ${i}`).join('\n');
       msg += `\n📋 Ficha técnica:\n${fichaLista}`;
