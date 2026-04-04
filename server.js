@@ -467,7 +467,7 @@ async function processUpdate(update) {
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
     if (stk > 0) kb.unshift([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
-    if (!isEmpty(p.ficha_tecnica)) kb.unshift([{ text: '📋 Ver ficha técnica', callback_data: `ficha_${p.numero_serie}` }]);
+    kb.unshift([{ text: '📋 Ver detalle completo', callback_data: `ficha_${p.numero_serie}` }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
     }
@@ -1133,19 +1133,7 @@ async function processUpdate(update) {
     const serie = cb.replace('prod_', '');
     const p = stock.find(s => s.numero_serie === serie);
     if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
-    if (!isEmpty(p.ficha_tecnica)) {
-      // Ir directo a ficha técnica
-      const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
-      const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
-      const fichaCorta = ('• ' + (p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica)).replace(/, /g, '\n• ');
-      let msg = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n${fichaCorta}\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
-      const kbF = [];
-      if ((Number(p.stock_actual)||0) > 0) kbF.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
-      kbF.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
-      await tgSend(chatId, msg, kbF);
-    } else {
-      await showProdDetail(p);
-    }
+    await showProdDetail(p);
     return;
   }
 
@@ -1305,21 +1293,40 @@ async function processUpdate(update) {
     return;
   }
 
-  // ── Ficha técnica ─────────────────────────────────────────────────────────
+  // ── Detalle completo del producto ────────────────────────────────────────
   if (cb.startsWith('ficha_')) {
     const serie = cb.replace('ficha_', '');
     const p = stock.find(s => s.numero_serie === serie);
-    if (!p || isEmpty(p.ficha_tecnica)) { await tgSend(chatId, 'No hay ficha técnica cargada para este producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
-    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
-    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
-    const footer = `\n\n📦 Stock: ${p.stock_actual} uds — ${p.ubicacion||'local'}\n💰 Precio: ${pmax} | Mín: ${pmin}`;
-    const header = `📋 <b>${p.marca} ${p.modelo}</b> — Ficha Técnica\n\n`;
-    const ficha = ('• ' + (p.ficha_tecnica.length > 3500 ? p.ficha_tecnica.substring(0, 3500) + '...' : p.ficha_tecnica)).replace(/, /g, '\n• ');
-    let msg = header + ficha + footer;
+    if (!p) { await tgSend(chatId, 'Producto no encontrado.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
+    const pmax  = Number(p.precio_max)  > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR',  { maximumFractionDigits: 0 }) : 'n/n';
+    const pmin  = Number(p.precio_min)  > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR',  { maximumFractionDigits: 0 }) : 'n/n';
+    const pcost = Number(p.precio_costo)> 0 ? '$'+Number(p.precio_costo).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : 'n/n';
+    const stk2  = Number(p.stock_actual) || 0;
+    let msg = `📋 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b> — Detalle completo\n\n`;
+    msg += `🏷️ Tipo: ${p.tipo||'n/n'}\n`;
+    msg += `🔢 Serie: ${p.numero_serie||'n/n'}\n`;
+    msg += `📐 Rodado: ${isEmpty(p.rodado)?'n/n':p.rodado} | Talle: ${isEmpty(p.talle)?'n/n':p.talle}\n`;
+    msg += `🎨 Color: ${isEmpty(p.color)?'n/n':p.color}\n`;
+    msg += `📝 Descripción: ${isEmpty(p.descripcion)?'n/n':p.descripcion}\n`;
+    msg += `📍 Ubicación: ${p.ubicacion||'n/n'} | Stock: ${stk2} | ${p.estado_unidad||'n/n'}\n`;
+    msg += `💰 Precio máx: ${pmax} | Mín: ${pmin} | Costo: ${pcost}\n`;
+    msg += `📦 Cod. proveedor: ${isEmpty(p.codigo_proveedor)?'n/n':p.codigo_proveedor}\n`;
+    msg += `📅 Ingreso: ${isEmpty(p.fecha_ingreso)?'n/n':p.fecha_ingreso}\n`;
+    if (!isEmpty(p.ficha_tecnica)) {
+      const fichaRaw = p.ficha_tecnica.length > 3000 ? p.ficha_tecnica.substring(0, 3000) + '...' : p.ficha_tecnica;
+      const fichaItems = fichaRaw.split(/,\s*/).map(s => s.trim()).filter(Boolean);
+      const fichaLista = `• ${p.tipo||'Producto'} ${isEmpty(p.rodado)?'':('R'+p.rodado+' ')}\n` +
+        fichaItems.map(i => `• ${i}`).join('\n');
+      msg += `\n📋 Ficha técnica:\n${fichaLista}`;
+    } else {
+      msg += `\n📋 Ficha técnica: n/n`;
+    }
     const kbFicha = [];
-    const stk2 = Number(p.stock_actual) || 0;
     if (stk2 > 0) kbFicha.push([{ text: '💰 Vender', callback_data: `vender_${p.numero_serie}` }]);
     kbFicha.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
+    if (p.foto_url) {
+      await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
+    }
     await tgSend(chatId, msg, kbFicha);
     return;
   }
