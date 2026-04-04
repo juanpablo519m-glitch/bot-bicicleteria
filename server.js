@@ -173,7 +173,7 @@ async function loadSheet(name) {
   return rows.slice(1).map((row, idx) => {
     if (!row) row = [];
     const obj = { _rowNum: idx + 2 };
-    hdrs.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+    hdrs.forEach((h, i) => { obj[h] = row[i] != null ? String(row[i]) : ''; });
     return obj;
   });
 }
