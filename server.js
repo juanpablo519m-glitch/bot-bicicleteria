@@ -480,18 +480,33 @@ async function processUpdate(update) {
     const first = variants[0];
     const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${isEmpty(first.rodado) ? '' : ' R'+first.rodado}`;
     variants.sort((a, b) => (Number(normalizarCampos(b).rodado) || 0) - (Number(normalizarCampos(a).rodado) || 0));
-    const kb = variants.map(p => {
+    // Sub-agrupar por rodado+color para no mostrar duplicados de ubicación
+    const subGroups = {};
+    variants.forEach(p => {
+      const pN = normalizarCampos(p);
+      const subKey = `${pN.rodado||''}|${(p.talle||'').toLowerCase()}|${(p.color||'').toLowerCase()}`;
+      if (!subGroups[subKey]) subGroups[subKey] = [];
+      subGroups[subKey].push(p);
+    });
+    const kb = Object.values(subGroups).map(items => {
+      const p = items[0];
       const pN = normalizarCampos(p);
       let label = '';
       if (!isEmpty(pN.rodado)) label += 'R'+pN.rodado;
       if (!isEmpty(p.talle)) label += (label ? ' T:' : 'T:') + p.talle;
       if (!isEmpty(p.color)) label += (label ? ' - ' : '') + p.color;
       if (!label) label = p.numero_serie;
-      label += ` (${p.ubicacion || 'local'})`;
-      return [{ text: label, callback_data: `prod_${p.numero_serie}` }];
+      if (items.length === 1) {
+        label += ` (${p.ubicacion || 'local'})`;
+        return [{ text: label, callback_data: `prod_${p.numero_serie}` }];
+      }
+      const totalStock = items.reduce((s, x) => s + (Number(x.stock_actual) || 1), 0);
+      const ubicaciones = [...new Set(items.map(x => x.ubicacion || 'local'))].join('/');
+      label += ` — ${totalStock} uds (${ubicaciones})`;
+      return [{ text: label, callback_data: `vgrp_${p.numero_serie}` }];
     });
     kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
-    await tgSend(chatId, `📦 <b>${titulo}</b> — ${variants.length} variante(s)\n¿Cuál buscás?`, kb);
+    await tgSend(chatId, `📦 <b>${titulo}</b> — ${Object.keys(subGroups).length} variante(s)\n¿Cuál buscás?`, kb);
   };
 
   const showProdList = async (res, query) => {
@@ -1168,6 +1183,27 @@ async function processUpdate(update) {
   }
 
   // ── Ver variantes de un modelo ────────────────────────────────────────────
+  // ── Ver unidades individuales de una variante agrupada ───────────────────
+  if (cb.startsWith('vgrp_')) {
+    const refSerie = cb.slice(5);
+    const ref = cache.stock.find(p => p.numero_serie === refSerie);
+    if (!ref) { await tgSend(chatId, '❌ No encontrado.'); return; }
+    const refN = normalizarCampos(ref);
+    const units = cache.stock.filter(p => {
+      const pN = normalizarCampos(p);
+      return (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase()
+        && pN.modelo.toLowerCase() === refN.modelo.toLowerCase()
+        && pN.rodado === refN.rodado
+        && (p.talle||'').toLowerCase() === (ref.talle||'').toLowerCase()
+        && (p.color||'').toLowerCase() === (ref.color||'').toLowerCase();
+    });
+    const kb = units.map(p => [{ text: `${p.numero_serie} — ${p.ubicacion||'local'}`, callback_data: `prod_${p.numero_serie}` }]);
+    kb.push([{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
+    const colorStr = isEmpty(ref.color) ? '' : ` ${ref.color}`;
+    await tgSend(chatId, `📦 <b>${ref.marca} ${ref.modelo||''}${isEmpty(refN.rodado)?'':' R'+refN.rodado}${colorStr}</b> — ${units.length} unidades\nElegí cuál:`, kb);
+    return;
+  }
+
   if (cb.startsWith('grp_')) {
     const refSerie = cb.slice(4);
     const ref = cache.stock.find(p => p.numero_serie === refSerie);
