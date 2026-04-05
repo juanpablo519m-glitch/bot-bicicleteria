@@ -479,6 +479,7 @@ async function processUpdate(update) {
     if (!variants || !variants.length) { await tgSend(chatId, '❌ No hay variantes disponibles en stock para este modelo.', [[{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]); return; }
     const first = variants[0];
     const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${isEmpty(first.rodado) ? '' : ' R'+first.rodado}`;
+    variants.sort((a, b) => (Number(normalizarCampos(b).rodado) || 0) - (Number(normalizarCampos(a).rodado) || 0));
     const kb = variants.map(p => {
       const pN = normalizarCampos(p);
       let label = '';
