@@ -125,39 +125,16 @@ async function getToken(scope = 'https://www.googleapis.com/auth/spreadsheets') 
   return _tokenCache[scope].token;
 }
 
-const DRIVE_FOTOS_FOLDER  = '1xfsZN_ihAFTkLVcaQlMWM5m0jwN-M7OD'; // Fotos Bicis
-const DRIVE_FACTURAS_FOLDER = '1U-o_gMKtbxYDkWM_LWeZUTc2LdpxJuIP'; // Facturas
-
 async function uploadToDrive(fileUrl, fileName, mimeType) {
   try {
-    const token = await getToken('https://www.googleapis.com/auth/drive');
-    // Descargar archivo
     const fileResp = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-    const fileBuffer = Buffer.from(fileResp.data);
-    // Elegir carpeta según tipo de archivo
-    const folderId = fileName.startsWith('producto_') ? DRIVE_FOTOS_FOLDER : DRIVE_FACTURAS_FOLDER;
-    // Subir a Drive con multipart upload
-    const boundary = '-------314159265358979323846';
-    const delimiter = `\r\n--${boundary}\r\n`;
-    const closeDelim = `\r\n--${boundary}--`;
-    const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
-    const metaPart = `${delimiter}Content-Type: application/json\r\n\r\n${metadata}`;
-    const dataPart = `${delimiter}Content-Type: ${mimeType || 'image/jpeg'}\r\nContent-Transfer-Encoding: base64\r\n\r\n${fileBuffer.toString('base64')}${closeDelim}`;
-    const body = metaPart + dataPart;
-    const uploadResp = await axios.post(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
-      body,
-      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': `multipart/related; boundary="${boundary}"` }, timeout: 60000 }
+    const base64 = Buffer.from(fileResp.data).toString('base64');
+    const resp = await axios.post(
+      N8N_DRIVE_WEBHOOK,
+      { filename: fileName, data: base64, mimeType: mimeType || 'image/jpeg' },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
     );
-    const fileId = uploadResp.data.id;
-    if (!fileId) return null;
-    // Hacer público
-    await axios.post(
-      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-      { role: 'reader', type: 'anyone' },
-      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
-    );
-    return uploadResp.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+    return resp.data.url || null;
   } catch (e) {
     console.error('[drive upload]', e.message);
     return null;
