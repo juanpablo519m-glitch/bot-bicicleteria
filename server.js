@@ -1369,19 +1369,22 @@ async function processUpdate(update) {
       [[{ text: '❌ Cancelar', callback_data: `ficha_${serie}` }]]);
     return;
   }
-  if (estado === 'FOTO_WAIT' && message && message.photo) {
+  if (estado === 'FOTO_WAIT' && message && (message.photo || message.document)) {
     const { numero_serie, marca, modelo } = datos;
-    const fileId = message.photo[message.photo.length - 1].file_id;
+    // Aceptar tanto foto comprimida como archivo original
+    const fileId = message.photo
+      ? message.photo[message.photo.length - 1].file_id
+      : message.document.file_id;
+    const mimeType = message.document?.mime_type || 'image/jpeg';
+    const ext = mimeType.includes('png') ? 'png' : 'jpg';
     await tgSend(chatId, '⏳ Subiendo foto a Drive...');
-    // Obtener URL temporal de Telegram para descargar
     const fileInfo = await tgPost('getFile', { file_id: fileId });
     const filePath = fileInfo?.result?.file_path;
     const tgUrl = filePath ? `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}` : null;
-    // Subir a Drive y obtener URL permanente
-    let fotoUrl = fileId; // fallback al file_id si Drive falla
+    let fotoUrl = fileId;
     if (tgUrl) {
-      const fileName = `producto_${numero_serie}_${Date.now()}.jpg`;
-      const driveUrl = await uploadToDrive(tgUrl, fileName, 'image/jpeg');
+      const fileName = `producto_${numero_serie}_${Date.now()}.${ext}`;
+      const driveUrl = await uploadToDrive(tgUrl, fileName, mimeType);
       if (driveUrl) fotoUrl = driveUrl;
     }
     await upsertRow('STOCK', { numero_serie, foto_url: fotoUrl, ultima_actualizacion: now() }, 'numero_serie');
@@ -1392,8 +1395,8 @@ async function processUpdate(update) {
       [[{ text: '📋 Ver detalle', callback_data: `ficha_${numero_serie}` }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
-  if (estado === 'FOTO_WAIT' && !message?.photo) {
-    await tgSend(chatId, '📷 Necesito una foto. Enviá la imagen del producto.',
+  if (estado === 'FOTO_WAIT' && !message?.photo && !message?.document) {
+    await tgSend(chatId, '📷 Necesito una foto. Enviá la imagen del producto (foto o archivo).',
       [[{ text: '❌ Cancelar', callback_data: `ficha_${datos.numero_serie}` }]]);
     return;
   }
