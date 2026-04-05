@@ -468,7 +468,7 @@ async function processUpdate(update) {
     msg += `💰 Precio: ${pmax} | Mín: ${pmin}`;
     const kb = [[{ text: '🔍 Nueva búsqueda', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]];
     if (stk > 0) kb.unshift([{ text: '⚡ Venta rápida', callback_data: `vrap_${p.numero_serie}` }, { text: '🧾 Con factura', callback_data: `vender_${p.numero_serie}` }]);
-    kb.unshift([{ text: '📋 Ver detalle completo', callback_data: `ficha_${p.numero_serie}` }]);
+    kb.unshift([{ text: '📋 Ver detalle completo', callback_data: `ficha_${p.numero_serie}` }, { text: p.foto_url ? '📷 Cambiar foto' : '📷 Agregar foto', callback_data: `foto_${p.numero_serie}` }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
     }
@@ -1350,11 +1350,43 @@ async function processUpdate(update) {
     }
     const kbFicha = [];
     if (stk2 > 0) kbFicha.push([{ text: '⚡ Venta rápida', callback_data: `vrap_${p.numero_serie}` }, { text: '🧾 Con factura', callback_data: `vender_${p.numero_serie}` }]);
+    kbFicha.push([{ text: p.foto_url ? '📷 Cambiar foto' : '📷 Agregar foto', callback_data: `foto_${p.numero_serie}` }]);
     kbFicha.push([{ text: '🔍 Buscar otro', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]);
     if (p.foto_url) {
       await tgPost('sendPhoto', { chat_id: chatId, photo: p.foto_url, caption: `${p.marca} ${p.modelo||''}`.trim(), parse_mode: 'HTML' });
     }
     await tgSend(chatId, msg, kbFicha);
+    return;
+  }
+
+  // ── Agregar/cambiar foto ──────────────────────────────────────────────────
+  if (cb.startsWith('foto_')) {
+    const serie = cb.slice(5);
+    const p = stock.find(s => s.numero_serie === serie);
+    if (!p) { await tgSend(chatId, 'Producto no encontrado.'); return; }
+    await saveSession('FOTO_WAIT', { numero_serie: serie, marca: p.marca, modelo: p.modelo||'' });
+    await tgSend(chatId, `📷 Mandame la foto para <b>${p.marca} ${p.modelo||''}</b> (${serie}):`,
+      [[{ text: '❌ Cancelar', callback_data: `ficha_${serie}` }]]);
+    return;
+  }
+  if (estado === 'FOTO_WAIT' && message && message.photo) {
+    const { numero_serie, marca, modelo } = datos;
+    const fileId = message.photo[message.photo.length - 1].file_id;
+    // Obtener URL pública de Telegram (válida ~1 hora para descarga, pero file_id es permanente)
+    const fileInfo = await tgPost('getFile', { file_id: fileId });
+    const filePath = fileInfo?.result?.file_path;
+    const publicUrl = filePath ? `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}` : null;
+    // Guardar file_id en foto_url (el bot lo usa para mostrar) y la URL pública en una nota
+    await upsertRow('STOCK', { numero_serie, foto_url: fileId, ultima_actualizacion: now() }, 'numero_serie');
+    await clearSession();
+    await tgSend(chatId,
+      `✅ Foto guardada para <b>${marca} ${modelo}</b>.\n🔗 <a href="${publicUrl}">Ver foto</a>`,
+      [[{ text: '📋 Ver detalle', callback_data: `ficha_${numero_serie}` }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
+    return;
+  }
+  if (estado === 'FOTO_WAIT' && !message?.photo) {
+    await tgSend(chatId, '📷 Necesito una foto. Enviá la imagen del producto.',
+      [[{ text: '❌ Cancelar', callback_data: `ficha_${datos.numero_serie}` }]]);
     return;
   }
 
