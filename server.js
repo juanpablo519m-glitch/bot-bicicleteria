@@ -480,8 +480,10 @@ async function processUpdate(update) {
     const first = variants[0];
     const titulo = `${first.marca}${first.modelo ? ' '+first.modelo : ''}${isEmpty(first.rodado) ? '' : ' R'+first.rodado}`;
     const kb = variants.map(p => {
+      const pN = normalizarCampos(p);
       let label = '';
-      if (!isEmpty(p.talle)) label += 'T: '+p.talle;
+      if (!isEmpty(pN.rodado)) label += 'R'+pN.rodado;
+      if (!isEmpty(p.talle)) label += (label ? ' T:' : 'T:') + p.talle;
       if (!isEmpty(p.color)) label += (label ? ' - ' : '') + p.color;
       if (!label) label = p.numero_serie;
       label += ` (${p.ubicacion || 'local'})`;
@@ -1173,8 +1175,7 @@ async function processUpdate(update) {
     const variants = stock.filter(p => {
       const pN = normalizarCampos(p);
       return (p.marca||'').toLowerCase() === (ref.marca||'').toLowerCase()
-        && pN.modelo.toLowerCase() === refN.modelo.toLowerCase()
-        && pN.rodado.toLowerCase() === refN.rodado.toLowerCase();
+        && pN.modelo.toLowerCase() === refN.modelo.toLowerCase();
     });
     await showVariants(variants);
     return;
