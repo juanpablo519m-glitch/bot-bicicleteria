@@ -495,7 +495,7 @@ async function processUpdate(update) {
     const groups = {};
     res.forEach(p => {
       const n = normalizarCampos(p);
-      const key = `${(p.marca||'').toLowerCase()}|${n.modelo.toLowerCase()}|${n.rodado.toLowerCase()}`;
+      const key = `${(p.marca||'').toLowerCase()}|${n.modelo.toLowerCase()}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push({ p, n });
     });
