@@ -100,15 +100,15 @@ const SA = {
 };
 
 // ── Google Auth (JWT manual — sin dependencias extra) ──────────────────────────
-let _tokenCache = { token: null, expiresAt: 0 };
+const _tokenCache = {};
 
-async function getToken() {
-  if (_tokenCache.token && _tokenCache.expiresAt > Date.now() + 60000) return _tokenCache.token;
+async function getToken(scope = 'https://www.googleapis.com/auth/spreadsheets') {
+  const cached = _tokenCache[scope];
+  if (cached && cached.expiresAt > Date.now() + 60000) return cached.token;
   const now = Math.floor(Date.now() / 1000);
   const hdr = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
   const cls = Buffer.from(JSON.stringify({
-    iss: SA.client_email,
-    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    iss: SA.client_email, scope,
     aud: 'https://oauth2.googleapis.com/token',
     exp: now + 3600, iat: now
   })).toString('base64url');
@@ -121,20 +121,43 @@ async function getToken() {
     new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
-  _tokenCache = { token: r.data.access_token, expiresAt: Date.now() + 3500000 };
-  return _tokenCache.token;
+  _tokenCache[scope] = { token: r.data.access_token, expiresAt: Date.now() + 3500000 };
+  return _tokenCache[scope].token;
 }
+
+const DRIVE_FOTOS_FOLDER  = '1xfsZN_ihAFTkLVcaQlMWM5m0jwN-M7OD'; // Fotos Bicis
+const DRIVE_FACTURAS_FOLDER = '1U-o_gMKtbxYDkWM_LWeZUTc2LdpxJuIP'; // Facturas
 
 async function uploadToDrive(fileUrl, fileName, mimeType) {
   try {
+    const token = await getToken('https://www.googleapis.com/auth/drive');
+    // Descargar archivo
     const fileResp = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-    const base64 = Buffer.from(fileResp.data).toString('base64');
-    const resp = await axios.post(
-      N8N_DRIVE_WEBHOOK,
-      { filename: fileName, data: base64, mimeType: mimeType || 'image/jpeg' },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+    const fileBuffer = Buffer.from(fileResp.data);
+    // Elegir carpeta según tipo de archivo
+    const folderId = fileName.startsWith('producto_') ? DRIVE_FOTOS_FOLDER : DRIVE_FACTURAS_FOLDER;
+    // Subir a Drive con multipart upload
+    const boundary = '-------314159265358979323846';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
+    const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
+    const metaPart = `${delimiter}Content-Type: application/json\r\n\r\n${metadata}`;
+    const dataPart = `${delimiter}Content-Type: ${mimeType || 'image/jpeg'}\r\nContent-Transfer-Encoding: base64\r\n\r\n${fileBuffer.toString('base64')}${closeDelim}`;
+    const body = metaPart + dataPart;
+    const uploadResp = await axios.post(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
+      body,
+      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': `multipart/related; boundary="${boundary}"` }, timeout: 60000 }
     );
-    return resp.data.url || null;
+    const fileId = uploadResp.data.id;
+    if (!fileId) return null;
+    // Hacer público
+    await axios.post(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+      { role: 'reader', type: 'anyone' },
+      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+    return uploadResp.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
   } catch (e) {
     console.error('[drive upload]', e.message);
     return null;
