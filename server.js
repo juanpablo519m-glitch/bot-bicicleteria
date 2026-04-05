@@ -1372,15 +1372,23 @@ async function processUpdate(update) {
   if (estado === 'FOTO_WAIT' && message && message.photo) {
     const { numero_serie, marca, modelo } = datos;
     const fileId = message.photo[message.photo.length - 1].file_id;
-    // Obtener URL pública de Telegram (válida ~1 hora para descarga, pero file_id es permanente)
+    await tgSend(chatId, '⏳ Subiendo foto a Drive...');
+    // Obtener URL temporal de Telegram para descargar
     const fileInfo = await tgPost('getFile', { file_id: fileId });
     const filePath = fileInfo?.result?.file_path;
-    const publicUrl = filePath ? `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}` : null;
-    // Guardar file_id en foto_url (el bot lo usa para mostrar) y la URL pública en una nota
-    await upsertRow('STOCK', { numero_serie, foto_url: fileId, ultima_actualizacion: now() }, 'numero_serie');
+    const tgUrl = filePath ? `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}` : null;
+    // Subir a Drive y obtener URL permanente
+    let fotoUrl = fileId; // fallback al file_id si Drive falla
+    if (tgUrl) {
+      const fileName = `producto_${numero_serie}_${Date.now()}.jpg`;
+      const driveUrl = await uploadToDrive(tgUrl, fileName, 'image/jpeg');
+      if (driveUrl) fotoUrl = driveUrl;
+    }
+    await upsertRow('STOCK', { numero_serie, foto_url: fotoUrl, ultima_actualizacion: now() }, 'numero_serie');
     await clearSession();
+    const esDrive = fotoUrl.startsWith('http');
     await tgSend(chatId,
-      `✅ Foto guardada para <b>${marca} ${modelo}</b>.\n🔗 <a href="${publicUrl}">Ver foto</a>`,
+      `✅ Foto guardada para <b>${marca} ${modelo}</b>.${esDrive ? `\n🔗 <a href="${fotoUrl}">Ver en Drive</a>` : ''}`,
       [[{ text: '📋 Ver detalle', callback_data: `ficha_${numero_serie}` }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
