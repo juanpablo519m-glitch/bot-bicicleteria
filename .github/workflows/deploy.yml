@@ -8,7 +8,39 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Easypanel deploy
-        run: |
-          curl -s "http://187.77.245.74:3000/api/deploy/a522d339890d5c7e68a62ff9b208a4a984f2cda7700dff8d"
-          echo "Deploy triggered"
+      - uses: actions/checkout@v3
+
+      - name: Copy code and rebuild on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 187.77.245.74
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Copiar server.js al directorio de Easypanel
+            cp /etc/easypanel/projects/bicicleteria/bot-bicicleteria/code/server.js \
+               /etc/easypanel/projects/bicicleteria/bot-bicicleteria/code/server.js.bak
+
+      - name: Upload server.js to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 187.77.245.74
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "server.js"
+          target: "/etc/easypanel/projects/bicicleteria/bot-bicicleteria/code/"
+
+      - name: Rebuild Docker image and redeploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 187.77.245.74
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /etc/easypanel/projects/bicicleteria/bot-bicicleteria/code
+            # Rebuild la imagen
+            docker build -t easypanel/bicicleteria/bot-bicicleteria:latest .
+            # Forzar redeploy del service con la nueva imagen
+            docker service update --image easypanel/bicicleteria/bot-bicicleteria:latest \
+              bicicleteria_bot-bicicleteria
+            echo "Deploy completado"
