@@ -454,7 +454,7 @@ async function processUpdate(update) {
       (Number(p.stock_actual) || 0) > 0 &&
       !['vendido','inactivo'].includes((p.estado_unidad || '').toLowerCase()) &&
       (fuzzy(q, p.numero_serie||'') || fuzzy(q, p.marca||'') ||
-       fuzzy(q, p.modelo||''))
+       fuzzy(q, p.modelo||'') || fuzzy(q, p.tipo||''))
     );
   };
 
