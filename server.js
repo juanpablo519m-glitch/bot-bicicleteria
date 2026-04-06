@@ -85,7 +85,7 @@ const calcularPrecios = (codigoProv) => {
   const recargo = provMatch ? RECARGO_PROVEEDOR[provMatch] : 0;
   const costoFinal = costo * (1 + recargo);
   return {
-    costo: round5000(costoFinal),
+    costo: Math.round(costoFinal),
     precio_max: round5000(costoFinal * 1.60),
     precio_min: round5000(costoFinal * 1.35),
     proveedor: item.proveedor,
