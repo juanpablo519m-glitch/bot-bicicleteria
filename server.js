@@ -603,6 +603,7 @@ async function processUpdate(update) {
   }
   if (estado === 'WAIT_SEARCH' && text) {
     const res = findProd(text); await clearSession();
+    console.log(`[search] "${text}" → ${res.length} resultados. Tipos: ${[...new Set(res.map(p=>p.tipo))].join(',')}`);
     if (!res.length) {
       await tgSend(chatId, `No encontré "${text}" en el stock.`, [[{ text: '🔍 Buscar de nuevo', callback_data: 'stock' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     } else if (res.length === 1) {
