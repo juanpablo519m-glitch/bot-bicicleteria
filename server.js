@@ -397,6 +397,15 @@ function mainMenu(rol) {
   return kb;
 }
 
+// ── Rate limiting ──────────────────────────────────────────────────────────────
+const _rl = {}; // { userId: { count, ts } }
+function rateLimit(userId) {
+  const now = Date.now();
+  if (!_rl[userId] || now - _rl[userId].ts > 60000) _rl[userId] = { count: 0, ts: now };
+  _rl[userId].count++;
+  return _rl[userId].count > 30; // max 30 mensajes por minuto
+}
+
 // ── Procesar update de Telegram ────────────────────────────────────────────────
 async function processUpdate(update) {
   const usuarios    = cache.usuarios.filter(u => u.telegram_id);
@@ -415,6 +424,8 @@ async function processUpdate(update) {
     userId = String(m.from.id); chatId = String(m.chat.id);
     firstName = m.from.first_name || ''; text = m.text || ''; cb = ''; cbId = null; message = m;
   } else return;
+
+  if (rateLimit(userId)) { console.warn('[rate-limit] bloqueado:', userId); return; }
 
   if (cbId) await tgAnswer(cbId);
 
