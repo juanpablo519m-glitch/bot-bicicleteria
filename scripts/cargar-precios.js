@@ -26,7 +26,7 @@ function sheetGet(url,hdrs){return new Promise((res,rej)=>{const u=new URL(url);
 function sheetPost(url,data,hdrs){return new Promise((res,rej)=>{const body=JSON.stringify(data);const u=new URL(url);const req=https.request({hostname:u.hostname,path:u.pathname+u.search,method:'POST',headers:{...hdrs,'Content-Length':Buffer.byteLength(body)}},r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>res(JSON.parse(d)))});req.on('error',rej);req.write(body);req.end();})}
 
 const normCod = s => (s||'').trim().toLowerCase().replace(/_/g,'-');
-const round100 = n => Math.round(n/100)*100;
+const round5000 = n => Math.round(n/5000)*5000;
 
 async function main(){
   const token = await getToken();
@@ -83,8 +83,8 @@ async function main(){
     const recargo = RECARGOS[item.proveedor] ?? 0;
     const costoFinal = item.costo*(1+recargo);
     const costo  = Math.round(costoFinal);
-    const pmax   = round100(costoFinal*1.60);
-    const pmin   = round100(costoFinal*1.35);
+    const pmax   = round5000(costoFinal*1.60);
+    const pmin   = round5000(costoFinal*1.35);
     updates.push({ sheetRow, costo, pmax, pmin });
     matches++;
     console.log(serie.padEnd(5)+' | '+row[16].padEnd(20)+' → costo:'+costo+' max:'+pmax+' min:'+pmin);

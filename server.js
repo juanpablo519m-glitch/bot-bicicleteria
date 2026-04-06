@@ -23,7 +23,7 @@ const RECARGO_PROVEEDOR = {
   'stark':           0.21,  // 21%
   'aries comercial': 0.21,  // 21%
 };
-const redondearCentenas = n => Math.round(n / 100) * 100;
+const round5000 = n => Math.round(n / 5000) * 5000;
 const normCod = s => (s||'').trim().toLowerCase().replace(/_/g, '-');
 const calcularPrecios = (codigoProv) => {
   if (!codigoProv) return null;
@@ -85,9 +85,9 @@ const calcularPrecios = (codigoProv) => {
   const recargo = provMatch ? RECARGO_PROVEEDOR[provMatch] : 0;
   const costoFinal = costo * (1 + recargo);
   return {
-    costo: Math.round(costoFinal),
-    precio_max: redondearCentenas(costoFinal * 1.60),
-    precio_min: redondearCentenas(costoFinal * 1.35),
+    costo: round5000(costoFinal),
+    precio_max: round5000(costoFinal * 1.60),
+    precio_min: round5000(costoFinal * 1.35),
     proveedor: item.proveedor,
     detalle: item.detalle_original,
     codigo_usado: item.codigo_proveedor
@@ -460,8 +460,8 @@ async function processUpdate(update) {
 
   const showProdDetail = async (p) => {
     const stk = Number(p.stock_actual) || 0;
-    const pmax = Number(p.precio_max) > 0 ? '$'+Number(p.precio_max).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
-    const pmin = Number(p.precio_min) > 0 ? '$'+Number(p.precio_min).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
+    const pmax = Number(p.precio_max) > 0 ? '$'+round5000(Number(p.precio_max)).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
+    const pmin = Number(p.precio_min) > 0 ? '$'+round5000(Number(p.precio_min)).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : '-';
     let msg = `📦 <b>${p.marca}${p.modelo ? ' '+p.modelo : ''}</b>${isEmpty(p.rodado) ? '' : ' R'+p.rodado}\n`;
     if (!isEmpty(p.talle) || !isEmpty(p.color)) msg += `${!isEmpty(p.talle) ? 'Talle: '+p.talle : ''}${!isEmpty(p.talle) && !isEmpty(p.color) ? ' | ' : ''}${!isEmpty(p.color) ? 'Color: '+p.color : ''}\n`;
     msg += `📍 ${p.ubicacion||'local'} | Stock: ${stk} | ${p.estado_unidad||'disponible'}\n`;
@@ -643,8 +643,9 @@ async function processUpdate(update) {
     const codigoProv = codProv || '';
     // Calcular precios desde catálogo si se dio código de proveedor
     const preciosAuto = codigoProv ? calcularPrecios(codigoProv) : null;
-    const precio = preciosAuto ? String(preciosAuto.precio_max) : (precioRaw || '0');
-    const precioMin = preciosAuto ? String(preciosAuto.precio_min) : (precioRaw || '0');
+    const precioManual = precioRaw ? String(round5000(Number((precioRaw||'0').replace(/\./g,'').replace(',','.')))) : '0';
+    const precio = preciosAuto ? String(preciosAuto.precio_max) : precioManual;
+    const precioMin = preciosAuto ? String(preciosAuto.precio_min) : precioManual;
     const precioCosto = preciosAuto ? String(preciosAuto.costo) : '0';
     const cant = parseInt(cantidad);
     if (isNaN(cant) || cant <= 0) { await tgSend(chatId, 'La cantidad debe ser un número mayor a 0.'); return; }
