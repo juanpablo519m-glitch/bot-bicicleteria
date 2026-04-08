@@ -1362,7 +1362,11 @@ async function processUpdate(update) {
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
-  if (cb.startsWith('venta_ok') && (estado === 'VENTA_CONF' || cb.includes('_ok_'))) {
+  if (cb.startsWith('venta_ok')) {
+    if (estado !== 'VENTA_CONF') {
+      await tgSend(chatId, '⚠️ Esta confirmación ya fue procesada o expiró. Iniciá la venta de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+      return;
+    }
     const serieFromCb = cb.startsWith('venta_ok_') ? cb.slice(9) : null;
     const { numero_serie: serieSesion, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
     const numero_serie = serieFromCb || serieSesion;
@@ -1483,7 +1487,11 @@ async function processUpdate(update) {
       [[{ text: '✅ Confirmar', callback_data: `vrap_ok_${datos.numero_serie}` }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
-  if (cb.startsWith('vrap_ok') && (estado === 'VRAP_CONF' || cb.includes('_ok_'))) {
+  if (cb.startsWith('vrap_ok')) {
+    if (estado !== 'VRAP_CONF') {
+      await tgSend(chatId, '⚠️ Esta confirmación ya fue procesada o expiró. Iniciá la venta de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]);
+      return;
+    }
     const serieFromCb = cb.startsWith('vrap_ok_') ? cb.slice(8) : null;
     const { numero_serie: serieSesion, descripcion, nombre, forma_pago, precio } = datos;
     const numero_serie = serieFromCb || serieSesion;
