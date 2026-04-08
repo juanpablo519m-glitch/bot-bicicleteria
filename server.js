@@ -1403,7 +1403,7 @@ async function processUpdate(update) {
     if (!isEmpty(p.ficha_tecnica)) {
       const fichaRaw = p.ficha_tecnica.length > 3000 ? p.ficha_tecnica.substring(0, 3000) + '...' : p.ficha_tecnica;
       const fichaItems = fichaRaw.split('\n').map(s => s.trim()).filter(Boolean);
-      const fichaLista = fichaItems.map(i => i.startsWith('<b>') ? i : `• ${i}`).join('\n');
+      const fichaLista = fichaItems.map(i => i.startsWith('<b>') ? `• ${i}` : i).join('\n');
       msg += `\n📋 Ficha técnica:\n${fichaLista}`;
     } else {
       msg += `\n📋 Ficha técnica: n/n`;
