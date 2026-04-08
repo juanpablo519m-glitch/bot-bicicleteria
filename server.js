@@ -256,7 +256,11 @@ async function appendRow(sheetName, data) {
 async function upsertRow(sheetName, data, keyField) {
   const ck = CACHE_KEY[sheetName];
   const arr = ck ? cache[ck] : [];
-  const idx = arr.findIndex(r => String(r[keyField]) === String(data[keyField]));
+  // Para SESIONES: priorizar la fila con estado activo, si no la primera que matchee
+  let idx = sheetName === 'SESIONES'
+    ? arr.findIndex(r => String(r[keyField]) === String(data[keyField]) && r.estado)
+    : -1;
+  if (idx < 0) idx = arr.findIndex(r => String(r[keyField]) === String(data[keyField]));
   if (idx >= 0) {
     const existing = arr[idx];
     const rowNum   = existing._rowNum;
@@ -459,7 +463,10 @@ async function processUpdate(update) {
   }
 
   const findUser  = uid => usuarios.find(u => String(u.telegram_id) === String(uid)) || null;
-  const findSesion= uid => sesiones.find(s => String(s.telegram_id) === String(uid)) || null;
+  const findSesion= uid => {
+    const todas = sesiones.filter(s => String(s.telegram_id) === String(uid));
+    return todas.find(s => s.estado) || todas[todas.length - 1] || null;
+  };
   const findProd  = q => {
     return stock.filter(p =>
       (Number(p.stock_actual) || 0) > 0 &&
