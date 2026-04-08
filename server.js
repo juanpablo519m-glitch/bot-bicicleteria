@@ -1402,9 +1402,8 @@ async function processUpdate(update) {
     msg += `📦 Cod. proveedor: ${isEmpty(p.codigo_proveedor)?'n/n':p.codigo_proveedor}\n`;
     if (!isEmpty(p.ficha_tecnica)) {
       const fichaRaw = p.ficha_tecnica.length > 3000 ? p.ficha_tecnica.substring(0, 3000) + '...' : p.ficha_tecnica;
-      const fichaItems = fichaRaw.split(/[,;\n]+|(?<!\d)\.\s+/).map(s => s.trim()).filter(Boolean);
-      const fichaLista = `• ${p.tipo||'Producto'} ${isEmpty(p.rodado)?'':('R'+p.rodado+' ')}\n` +
-        fichaItems.map(i => `• ${i}`).join('\n');
+      const fichaItems = fichaRaw.split('\n').map(s => s.trim()).filter(Boolean);
+      const fichaLista = fichaItems.map(i => i.startsWith('<b>') ? i : `• ${i}`).join('\n');
       msg += `\n📋 Ficha técnica:\n${fichaLista}`;
     } else {
       msg += `\n📋 Ficha técnica: n/n`;
