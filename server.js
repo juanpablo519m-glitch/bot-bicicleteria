@@ -212,7 +212,7 @@ async function refreshCache() {
       if ((Number(p.stock_actual) || 0) > 0 && (p.estado_unidad || '').toLowerCase() === 'vendido') {
         p.estado_unidad = 'disponible';
         await axios.put(
-          `${SHEETS_BASE}/${SHEET_ID}/values/STOCK!I${p._rowNum}?valueInputOption=RAW`,
+          `${SHEETS_BASE}/${SHEET_ID}/values/STOCK!H${p._rowNum}?valueInputOption=RAW`,
           { values: [['disponible']] },
           { headers: { Authorization: `Bearer ${token}` } }
         ).catch(e => console.error('[fix-estado]', p.numero_serie, e.message));
