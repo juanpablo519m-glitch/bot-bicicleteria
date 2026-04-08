@@ -8,18 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Upload server.js to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 187.77.245.74
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "server.js"
-          target: "/etc/easypanel/projects/bicicleteria/bot-bicicleteria/code/"
-
-      - name: Rebuild image and deploy
+      - name: Deploy en servidor
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 187.77.245.74
@@ -27,6 +16,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /etc/easypanel/projects/bicicleteria/bot-bicicleteria/code
+            git pull origin main
             docker build -t easypanel/bicicleteria/bot-bicicleteria:latest .
             docker service update --image easypanel/bicicleteria/bot-bicicleteria:latest bicicleteria_bot-bicicleteria
             echo "✅ Deploy completado"
