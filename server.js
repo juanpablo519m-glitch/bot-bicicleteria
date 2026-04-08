@@ -206,17 +206,22 @@ async function refreshCache() {
     const usuarios = cache.usuarios;
     cacheReady = true;
     console.log(`[cache] users:${usuarios.length} stock:${stock.length} movs:${cache.movimientos.length} facts:${cache.facturas.length}`);
-    // Auto-corregir: si stock > 0 pero estado = vendido → poner disponible
+    // Auto-corregir estados inconsistentes
     const token = await getToken();
     for (const p of stock) {
-      if ((Number(p.stock_actual) || 0) > 0 && (p.estado_unidad || '').toLowerCase() === 'vendido') {
-        p.estado_unidad = 'disponible';
+      const stk = Number(p.stock_actual) || 0;
+      const estado = (p.estado_unidad || '').toLowerCase();
+      let nuevoEstado = null;
+      if (stk > 0 && estado === 'vendido') nuevoEstado = 'disponible';
+      else if (stk === 0 && estado !== 'vendido') nuevoEstado = 'vendido';
+      if (nuevoEstado) {
+        p.estado_unidad = nuevoEstado;
         await axios.put(
           `${SHEETS_BASE}/${SHEET_ID}/values/STOCK!H${p._rowNum}?valueInputOption=RAW`,
-          { values: [['disponible']] },
+          { values: [[nuevoEstado]] },
           { headers: { Authorization: `Bearer ${token}` } }
         ).catch(e => console.error('[fix-estado]', p.numero_serie, e.message));
-        console.log(`[fix-estado] ${p.numero_serie} stock=${p.stock_actual} → disponible`);
+        console.log(`[fix-estado] ${p.numero_serie} stock=${stk} → ${nuevoEstado}`);
       }
     }
   } catch (e) { console.error('[cache] refresh error:', e.message); }
