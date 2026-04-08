@@ -1459,7 +1459,7 @@ async function processUpdate(update) {
   }
 
   // ── Venta rápida ─────────────────────────────────────────────────────────
-  if (cb.startsWith('vrap_')) {
+  if (cb.startsWith('vrap_') && !cb.startsWith('vrap_ok')) {
     const serie = cb.slice(5);
     const p = cache.stock.find(p => p.numero_serie === serie);
     if (!p) { await tgSend(chatId, '❌ Producto no encontrado.'); return; }
