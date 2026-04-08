@@ -1476,7 +1476,8 @@ async function processUpdate(update) {
   }
   if (cb === 'vrap_ok' && estado === 'VRAP_CONF') {
     const { numero_serie, descripcion, nombre, forma_pago, precio } = datos;
-    const p = cache.stock.find(p => p.numero_serie === numero_serie);
+    console.log('[vrap_ok] numero_serie:', numero_serie, '| datos:', JSON.stringify(datos));
+    const p = cache.stock.find(p => (p.numero_serie||'').toLowerCase() === (numero_serie||'').toLowerCase());
     if (!p) { await tgSend(chatId, '❌ No se encontró el producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
     await clearSession();
     const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
