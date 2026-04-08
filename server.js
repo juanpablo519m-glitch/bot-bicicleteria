@@ -1346,7 +1346,7 @@ async function processUpdate(update) {
       `💵 $${precio} — ${forma_pago}` +
       (mail ? `\n📧 ${mail}` : '') +
       (telefono ? `\n📞 ${telefono}` : ''),
-      [[{ text: '✅ Confirmar', callback_data: 'venta_ok' }, { text: '✏️ Editar', callback_data: 'venta_edit' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      [[{ text: '✅ Confirmar', callback_data: `venta_ok_${datos.numero_serie}` }, { text: '✏️ Editar', callback_data: 'venta_edit' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (cb === 'venta_edit' && estado === 'VENTA_CONF') {
@@ -1362,9 +1362,11 @@ async function processUpdate(update) {
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
-  if (cb === 'venta_ok' && estado === 'VENTA_CONF') {
-    const { numero_serie, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
-    const p = cache.stock.find(p => p.numero_serie === numero_serie);
+  if (cb.startsWith('venta_ok') && (estado === 'VENTA_CONF' || cb.includes('_ok_'))) {
+    const serieFromCb = cb.startsWith('venta_ok_') ? cb.slice(9) : null;
+    const { numero_serie: serieSesion, descripcion, nombre, domicilio, dni_cuit, tipo, precio, forma_pago, mail, telefono } = datos;
+    const numero_serie = serieFromCb || serieSesion;
+    const p = cache.stock.find(p => (p.numero_serie||'').toLowerCase() === (numero_serie||'').toLowerCase());
     if (!p) { await tgSend(chatId, '❌ No se encontró el producto en stock. Recargá los datos e intentá de nuevo.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
     await clearSession(); // anti double-click: limpiar sesión antes de procesar
     const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
@@ -1478,12 +1480,13 @@ async function processUpdate(update) {
     await saveSession('VRAP_CONF', { ...datos, nombre, forma_pago });
     await tgSend(chatId,
       `⚡ <b>Confirmar venta rápida:</b>\n\n📦 ${datos.descripcion}\n👤 ${nombre}\n💰 ${precioStr} — ${forma_pago}`,
-      [[{ text: '✅ Confirmar', callback_data: 'vrap_ok' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
+      [[{ text: '✅ Confirmar', callback_data: `vrap_ok_${datos.numero_serie}` }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
-  if (cb === 'vrap_ok' && estado === 'VRAP_CONF') {
-    const { numero_serie, descripcion, nombre, forma_pago, precio } = datos;
-    console.log('[vrap_ok] numero_serie:', numero_serie, '| datos:', JSON.stringify(datos));
+  if (cb.startsWith('vrap_ok') && (estado === 'VRAP_CONF' || cb.includes('_ok_'))) {
+    const serieFromCb = cb.startsWith('vrap_ok_') ? cb.slice(8) : null;
+    const { numero_serie: serieSesion, descripcion, nombre, forma_pago, precio } = datos;
+    const numero_serie = serieFromCb || serieSesion;
     const p = cache.stock.find(p => (p.numero_serie||'').toLowerCase() === (numero_serie||'').toLowerCase());
     if (!p) { await tgSend(chatId, '❌ No se encontró el producto.', [[{ text: '🏠 Menú', callback_data: 'main_menu' }]]); await clearSession(); return; }
     await clearSession();
