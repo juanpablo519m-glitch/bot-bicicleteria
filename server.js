@@ -149,8 +149,8 @@ const HEADERS = {
   STOCK:                  ['tipo','marca','modelo','numero_serie','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color','codigo_proveedor'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','mail','telefono','factura_realizada'],
-  VENTAS_ACCESORIOS:      ['fecha','descripcion','precio','forma_pago','operador'],
-  VENTAS_BICICLETAS:      ['fecha','descripcion','precio','forma_pago','operador'],
+  VENTAS_ACCESORIOS:      ['fecha','nombre','descripcion','precio','forma_pago','operador'],
+  VENTAS_BICICLETAS:      ['fecha','nombre','descripcion','precio','forma_pago','operador'],
   COMPRAS:                ['fecha','tipo','marca','modelo','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado','color']
 };
 
@@ -1254,25 +1254,26 @@ async function processUpdate(update) {
     await saveSession('VR_DATA', { tipo });
     await tgSend(chatId,
       `💰 <b>Venta de ${tipo}</b>\n\nMandame los datos separados por coma:\n` +
-      `<code>Descripción, Precio, Forma de pago</code>\n\n` +
-      `<i>Ejemplo:</i>\n<code>Casco Nutcase talle M, 15000, Efectivo</code>`,
+      `<code>Nombre cliente, Descripción, Precio, Forma de pago</code>\n\n` +
+      `<i>Ejemplo:</i>\n<code>Juan Pérez, Casco Nutcase talle M, 15000, Efectivo</code>`,
       [[{ text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
   if (estado === 'VR_DATA' && text) {
     const parts = text.split(',').map(p => p.trim()).filter(Boolean);
-    if (parts.length < 3) {
-      await tgSend(chatId, '❌ Faltan datos. Necesito: Descripción, Precio, Forma de pago');
+    if (parts.length < 4) {
+      await tgSend(chatId, '❌ Faltan datos. Necesito: Nombre cliente, Descripción, Precio, Forma de pago');
       return;
     }
-    const [descripcion, precioRawVr, forma_pago] = parts;
+    const [nombre, descripcion, precioRawVr, ...restVr] = parts;
+    const forma_pago = restVr.join(', ');
     const precio = (precioRawVr||'0').replace(/\./g,'').replace(',','.');
     if (isNaN(Number(precio)) || Number(precio) < 0) { await tgSend(chatId, '❌ El precio no es válido. Usá solo números (ej: 15000). Reintentá.'); return; }
     const { tipo } = datos;
-    await saveSession('VR_CONF', { tipo, descripcion, precio, forma_pago });
+    await saveSession('VR_CONF', { tipo, nombre, descripcion, precio, forma_pago });
     await tgSend(chatId,
       `💰 <b>Confirmar venta:</b>\n\n` +
-      `📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
+      `👤 ${nombre}\n📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
       [[{ text: '✅ Confirmar', callback_data: 'vr_ok' }, { text: '✏️ Editar', callback_data: 'vr_edit' }, { text: '❌ Cancelar', callback_data: 'main_menu' }]]);
     return;
   }
@@ -1287,12 +1288,12 @@ async function processUpdate(update) {
     return;
   }
   if (cb === 'vr_ok' && estado === 'VR_CONF') {
-    const { tipo, descripcion, precio, forma_pago } = datos;
+    const { tipo, nombre, descripcion, precio, forma_pago } = datos;
     const sheet = tipo === 'accesorio' ? 'VENTAS_ACCESORIOS' : 'VENTAS_BICICLETAS';
     await clearSession(); // anti double-click
-    await appendRow(sheet, { fecha: now(), descripcion, precio, forma_pago, operador: user.nombre });
+    await appendRow(sheet, { fecha: now(), nombre, descripcion, precio, forma_pago, operador: user.nombre });
     await tgSend(chatId,
-      `✅ <b>Venta registrada</b>\n📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
+      `✅ <b>Venta registrada</b>\n👤 ${nombre}\n📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
       [[{ text: '💰 Otra venta', callback_data: 'venta_rapida' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
     return;
   }
@@ -1504,8 +1505,9 @@ async function processUpdate(update) {
     await clearSession();
     const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
     const ventaTs = now();
-    const hoja = (p.tipo||'').toLowerCase().includes('bici') ? 'VENTAS_BICICLETAS' : 'VENTAS_ACCESORIOS';
-    await appendRow(hoja, { fecha: ventaTs, descripcion, precio: precio || '', forma_pago, operador: user.nombre });
+    const tipoProd = (p.tipo||'').toLowerCase();
+    const hoja = (tipoProd.includes('bici') || tipoProd.includes('cuadro')) ? 'VENTAS_BICICLETAS' : 'VENTAS_ACCESORIOS';
+    await appendRow(hoja, { fecha: ventaTs, nombre, descripcion, precio: precio || '', forma_pago, operador: user.nombre });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p.estado_unidad || 'disponible'), ultima_actualizacion: ventaTs }, 'numero_serie');
     const precioStr = precio > 0 ? `$${Number(precio).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'sin precio';
     await tgSend(chatId,
