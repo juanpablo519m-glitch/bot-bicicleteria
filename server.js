@@ -149,8 +149,8 @@ const HEADERS = {
   STOCK:                  ['tipo','marca','modelo','numero_serie','ubicacion','stock_actual','stock_minimo','estado_unidad','precio_costo','precio_max','precio_min','rodado','talle','fecha_ingreso','ultima_actualizacion','ficha_tecnica','foto_url','color','codigo_proveedor'],
   HISTORIAL:              ['id_movimiento','tipo','estado','id_producto','cantidad','referencia_doc','telegram_id_operador','nombre_operador','telegram_id_aprobador','nombre_aprobador','fecha_creacion','fecha_aprobacion','motivo_rechazo','notas_aprobador'],
   FACTURAS:               ['id_factura','nombre','domicilio','dni_cuit','tipo','descripcion_producto','precio_venta','fecha','forma_pago','numero_serie','mail','telefono','factura_realizada'],
-  VENTAS_ACCESORIOS:      ['fecha','nombre','descripcion','precio','forma_pago','operador'],
-  VENTAS_BICICLETAS:      ['fecha','nombre','descripcion','precio','forma_pago','operador'],
+  VENTAS_ACCESORIOS:      ['fecha','nombre','descripcion','precio','forma_pago','operador','factura_realizada'],
+  VENTAS_BICICLETAS:      ['fecha','nombre','descripcion','precio','forma_pago','operador','factura_realizada'],
   COMPRAS:                ['fecha','tipo','marca','modelo','cantidad','precio_unitario','rodado','talle','ubicacion','foto_drive','codigo_proveedor','estado','color']
 };
 
@@ -1291,7 +1291,7 @@ async function processUpdate(update) {
     const { tipo, nombre, descripcion, precio, forma_pago } = datos;
     const sheet = tipo === 'accesorio' ? 'VENTAS_ACCESORIOS' : 'VENTAS_BICICLETAS';
     await clearSession(); // anti double-click
-    await appendRow(sheet, { fecha: now(), nombre, descripcion, precio, forma_pago, operador: user.nombre });
+    await appendRow(sheet, { fecha: now(), nombre, descripcion, precio, forma_pago, operador: user.nombre, factura_realizada: 'FALSE' });
     await tgSend(chatId,
       `✅ <b>Venta registrada</b>\n👤 ${nombre}\n📦 ${descripcion}\n💵 $${precio} — ${forma_pago}`,
       [[{ text: '💰 Otra venta', callback_data: 'venta_rapida' }, { text: '🏠 Menú', callback_data: 'main_menu' }]]);
@@ -1382,6 +1382,9 @@ async function processUpdate(update) {
     const newStock = Math.max(0, (Number(p.stock_actual) || 0) - 1);
     const ventaTs = now();
     await appendRow('FACTURAS', { id_factura: `FAC-${Date.now()}`, nombre, domicilio, dni_cuit, tipo, descripcion_producto: descripcion, precio_venta: precio, fecha: ventaTs, factura_realizada: 'FALSE', forma_pago, numero_serie, mail: mail||'', telefono: telefono||'' });
+    const tipoProdFac = (p.tipo||'').toLowerCase();
+    const hojaFac = (tipoProdFac.includes('bici') || tipoProdFac.includes('cuadro')) ? 'VENTAS_BICICLETAS' : 'VENTAS_ACCESORIOS';
+    await appendRow(hojaFac, { fecha: ventaTs, nombre, descripcion, precio, forma_pago, operador: user.nombre, factura_realizada: 'FALSE' });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p.estado_unidad || 'disponible'), ultima_actualizacion: ventaTs }, 'numero_serie');
     await tgSend(chatId,
       `✅ <b>Venta registrada</b>\n\n📦 ${descripcion}\n👤 ${nombre}\n💵 $${precio} — ${forma_pago}\n\n📋 Factura pendiente en Google Sheets.`,
@@ -1507,7 +1510,7 @@ async function processUpdate(update) {
     const ventaTs = now();
     const tipoProd = (p.tipo||'').toLowerCase();
     const hoja = (tipoProd.includes('bici') || tipoProd.includes('cuadro')) ? 'VENTAS_BICICLETAS' : 'VENTAS_ACCESORIOS';
-    await appendRow(hoja, { fecha: ventaTs, nombre, descripcion, precio: precio || '', forma_pago, operador: user.nombre });
+    await appendRow(hoja, { fecha: ventaTs, nombre, descripcion, precio: precio || '', forma_pago, operador: user.nombre, factura_realizada: 'FALSE' });
     await upsertRow('STOCK', { numero_serie, stock_actual: String(newStock), estado_unidad: newStock === 0 ? 'vendido' : (p.estado_unidad || 'disponible'), ultima_actualizacion: ventaTs }, 'numero_serie');
     const precioStr = precio > 0 ? `$${Number(precio).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'sin precio';
     await tgSend(chatId,
