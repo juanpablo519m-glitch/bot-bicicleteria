@@ -17,6 +17,6 @@ jobs:
           script: |
             cd /etc/easypanel/projects/bicicleteria/bot-bicicleteria/code
             git pull origin main
-            docker build -t easypanel/bicicleteria/bot-bicicleteria:latest .
+            docker build --no-cache -t easypanel/bicicleteria/bot-bicicleteria:latest .
             docker service update --force --image easypanel/bicicleteria/bot-bicicleteria:latest bicicleteria_bot-bicicleteria
             echo "✅ Deploy completado"
