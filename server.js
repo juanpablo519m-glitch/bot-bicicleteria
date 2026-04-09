@@ -1569,26 +1569,8 @@ app.post('/webhook', async (req, res) => {
   } catch (e) { console.error('[webhook] error:', e.message); }
 });
 
-async function limpiarFormatoSheets() {
-  try {
-    const token = await getToken();
-    const meta = await axios.get(`${SHEETS_BASE}/${SHEET_ID}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } });
-    const blanco = { red: 1, green: 1, blue: 1 };
-    const requests = meta.data.sheets.map(s => ({
-      repeatCell: {
-        range: { sheetId: s.properties.sheetId, startRowIndex: 0, endRowIndex: 1000, startColumnIndex: 0, endColumnIndex: 26 },
-        cell: { userEnteredFormat: { backgroundColor: blanco } },
-        fields: 'userEnteredFormat.backgroundColor'
-      }
-    }));
-    await axios.post(`${SHEETS_BASE}/${SHEET_ID}:batchUpdate`, { requests }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
-    console.log('[formato] Fondo blanco aplicado a todas las hojas');
-  } catch (e) { console.error('[formato]', e.message); }
-}
-
 app.listen(PORT, async () => {
   console.log(`Bot bicicletería en puerto ${PORT} — v2026-04-09`);
   await refreshCache();
-  await limpiarFormatoSheets();
   setInterval(refreshCache, 20 * 1000); // refrescar cache cada 20s
 });
