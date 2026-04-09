@@ -1570,7 +1570,7 @@ app.post('/webhook', async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`Bot bicicletería en puerto ${PORT} — v2026-04-02`);
+  console.log(`Bot bicicletería en puerto ${PORT} — v2026-04-09`);
   await refreshCache();
   setInterval(refreshCache, 20 * 1000); // refrescar cache cada 20s
 });
