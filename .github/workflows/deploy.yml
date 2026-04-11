@@ -15,8 +15,8 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /etc/easypanel/projects/bicicleteria/bot-bicicleteria/code
+            cd /tmp/bot-deploy
             git pull origin main
-            docker build --no-cache -t easypanel/bicicleteria/bot-bicicleteria:latest .
-            docker service update --force --image easypanel/bicicleteria/bot-bicicleteria:latest bicicleteria_bot-bicicleteria
+            docker build --no-cache -t bicicleteria_bot-bicicleteria:latest .
+            docker service update --force --image bicicleteria_bot-bicicleteria:latest bicicleteria_bot-bicicleteria
             echo "✅ Deploy completado"
