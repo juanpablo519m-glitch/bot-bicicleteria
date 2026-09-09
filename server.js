@@ -48,6 +48,48 @@ app.post('/cm-write', async (req, res) => {
   }
 });
 
+app.get('/pandora-data', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!process.env.PANDORA_SECRET || token !== process.env.PANDORA_SECRET)
+    return res.status(401).json({ error: 'Unauthorized' });
+
+  if (!state.cacheReady) await refreshCache();
+
+  const stock = cache.stock.map(p => ({
+    marca: p.marca, modelo: p.modelo, tipo: p.tipo,
+    stock_actual: p.stock_actual, estado: p.estado_unidad,
+    precio_max: p.precio_max, rodado: p.rodado, talle: p.talle,
+    ubicacion: p.ubicacion, descripcion: p.ficha_tecnica || ''
+  }));
+
+  const movimientos_pendientes = cache.movimientos
+    .filter(m => m.estado === 'pendiente')
+    .map(m => ({
+      tipo: m.tipo, descripcion: m.descripcion_movimiento,
+      operador: m.nombre_operador, fecha: m.fecha_creacion
+    }));
+
+  const hoy = new Date().toLocaleDateString('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    day: '2-digit', month: '2-digit', year: 'numeric'
+  });
+
+  let ventas_hoy = [];
+  try {
+    const t = await getToken();
+    const [r1, r2] = await Promise.all([
+      axios.get(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/VENTAS_BICICLETAS!A:G?valueRenderOption=FORMATTED_VALUE`, { headers: { Authorization: `Bearer ${t}` } }),
+      axios.get(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/VENTAS_ACCESORIOS!A:G?valueRenderOption=FORMATTED_VALUE`,  { headers: { Authorization: `Bearer ${t}` } })
+    ]);
+    const parsear = (data, tipo) => (data?.values || []).slice(1)
+      .filter(r => r[0] === hoy)
+      .map(r => ({ tipo, fecha: r[0], nombre: r[1], descripcion: r[2], precio: r[3], forma_pago: r[4], operador: r[5] }));
+    ventas_hoy = [...parsear(r1.data, 'bicicleta'), ...parsear(r2.data, 'accesorio')];
+  } catch (e) { console.error('[pandora-data ventas]', e.message); }
+
+  res.json({ stock, movimientos_pendientes, ventas_hoy });
+});
+
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   try {
