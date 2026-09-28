@@ -15,8 +15,49 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /tmp/bot-deploy
+            # set -e: si cualquier paso falla, el deploy falla RUIDOSAMENTE.
+            # Antes el repo vivia en /tmp/bot-deploy y se borro en un reinicio del
+            # servidor (/tmp se limpia). El "cd" fallaba, el resto seguia corriendo
+            # igual y GitHub marcaba el deploy como exitoso: el bot quedo semanas
+            # con codigo viejo sin que nadie se enterara.
+            set -e
+
+            DEPLOY_DIR=/root/bot-deploy
+
+            if [ ! -d "$DEPLOY_DIR" ]; then
+              echo "ERROR: no existe $DEPLOY_DIR"
+              echo "Clonalo a mano en el servidor y volve a correr el deploy:"
+              echo "  git clone <url-del-repo-con-token> $DEPLOY_DIR"
+              exit 1
+            fi
+
+            cd "$DEPLOY_DIR"
             git pull origin main
+
+            echo "Commit desplegado: $(git log -1 --format='%h %s')"
+            BYTES_REPO=$(stat -c %s server.js)
+            echo "server.js en el repo: $BYTES_REPO bytes"
+
             docker build --no-cache -t bicicleteria_bot-bicicleteria:latest .
             docker service update --force --image bicicleteria_bot-bicicleteria:latest bicicleteria_bot-bicicleteria
-            echo "✅ Deploy completado"
+
+            # Esperar a que el servicio levante la tarea nueva
+            sleep 25
+
+            # Verificar que lo que quedo corriendo coincide con el repo
+            CONT=$(docker ps --filter name=bot-bicicleteria --format '{{.Names}}' | head -1)
+            if [ -z "$CONT" ]; then
+              echo "ERROR: no hay contenedor corriendo despues del deploy"
+              exit 1
+            fi
+
+            BYTES_CONT=$(docker exec "$CONT" stat -c %s /app/server.js)
+            echo "server.js en el contenedor: $BYTES_CONT bytes"
+
+            if [ "$BYTES_REPO" != "$BYTES_CONT" ]; then
+              echo "ERROR: el codigo desplegado NO coincide con el repo"
+              echo "  repo: $BYTES_REPO bytes / contenedor: $BYTES_CONT bytes"
+              exit 1
+            fi
+
+            echo "Deploy completado y verificado"
