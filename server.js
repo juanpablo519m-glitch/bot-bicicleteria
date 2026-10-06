@@ -5,6 +5,7 @@ const { PORT, BOT_TOKEN, SHEET_ID } = require('./lib/config');
 const { cache, state, refreshCache, getToken } = require('./lib/sheets');
 const { now } = require('./lib/utils');
 const { processUpdate } = require('./lib/handlers');
+const { asegurarWebhook } = require('./lib/telegram');
 
 const CM_SHEET_ID = '1E8tMRrWjo7rKGcKLeLw37Vlj-JJoSTenxLrZ8LGK0lk';
 
@@ -102,4 +103,6 @@ app.listen(PORT, async () => {
   console.log(`Bot bicicletería en puerto ${PORT} — v2026-04-11`);
   await refreshCache();
   setInterval(refreshCache, 20 * 1000);
+  asegurarWebhook(true);
+  setInterval(asegurarWebhook, 10 * 60 * 1000);
 });
