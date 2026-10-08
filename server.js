@@ -1,11 +1,12 @@
 'use strict';
 const express = require('express');
 const axios   = require('axios');
-const { PORT, BOT_TOKEN, SHEET_ID } = require('./lib/config');
+const { PORT, BOT_TOKEN, SHEET_ID, ADMIN_ID } = require('./lib/config');
 const { cache, state, refreshCache, getToken } = require('./lib/sheets');
 const { now } = require('./lib/utils');
 const { processUpdate } = require('./lib/handlers');
-const { asegurarWebhook } = require('./lib/telegram');
+const { asegurarWebhook, tgSend } = require('./lib/telegram');
+const reportes = require('./lib/reportes');
 
 const CM_SHEET_ID = '1E8tMRrWjo7rKGcKLeLw37Vlj-JJoSTenxLrZ8LGK0lk';
 
@@ -70,25 +71,23 @@ app.get('/pandora-data', async (req, res) => {
       operador: m.nombre_operador, fecha: m.fecha_creacion
     }));
 
-  const hoy = new Date().toLocaleDateString('es-AR', {
-    timeZone: 'America/Argentina/Buenos_Aires',
-    day: '2-digit', month: '2-digit', year: 'numeric'
-  });
-
+  // Antes se comparaba la fecha con "08/10/2026" (barras, sin hora) pero la planilla guarda "08-10-2026 18:30:55":
+  // ventas_hoy salia SIEMPRE vacio. Ahora usa la misma funcion que el reporte diario (lib/reportes.js).
   let ventas_hoy = [];
-  try {
-    const t = await getToken();
-    const [r1, r2] = await Promise.all([
-      axios.get(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/VENTAS_BICICLETAS!A:G?valueRenderOption=FORMATTED_VALUE`, { headers: { Authorization: `Bearer ${t}` } }),
-      axios.get(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/VENTAS_ACCESORIOS!A:G?valueRenderOption=FORMATTED_VALUE`,  { headers: { Authorization: `Bearer ${t}` } })
-    ]);
-    const parsear = (data, tipo) => (data?.values || []).slice(1)
-      .filter(r => r[0] === hoy)
-      .map(r => ({ tipo, fecha: r[0], nombre: r[1], descripcion: r[2], precio: r[3], forma_pago: r[4], operador: r[5] }));
-    ventas_hoy = [...parsear(r1.data, 'bicicleta'), ...parsear(r2.data, 'accesorio')];
-  } catch (e) { console.error('[pandora-data ventas]', e.message); }
+  try { ventas_hoy = await reportes.ventasDelDia({ getToken, SHEET_ID }); }
+  catch (e) { console.error('[pandora-data ventas]', e.message); }
 
   res.json({ stock, movimientos_pendientes, ventas_hoy });
+});
+
+// Como quedarian el reporte y la alerta de las 22 h, con datos de ahora, SIN mandar nada.
+app.get('/reportes/vista', async (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (!process.env.PANDORA_SECRET || token !== process.env.PANDORA_SECRET)
+    return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json({ activo: reportes.activo(), ...(await reportes.vista({ cache, state, refreshCache, getToken, SHEET_ID })) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/webhook', async (req, res) => {
@@ -105,4 +104,5 @@ app.listen(PORT, async () => {
   setInterval(refreshCache, 20 * 1000);
   asegurarWebhook(true);
   setInterval(asegurarWebhook, 10 * 60 * 1000);
+  reportes.iniciarReportes({ cache, state, refreshCache, getToken, SHEET_ID, tgSend, adminId: ADMIN_ID });
 });
