@@ -27,6 +27,19 @@ sim.correr([
     assert.strictEqual(sim.filas('HISTORIAL').length, 1);
   }],
 
+  ['la ENTRADA de un accesorio agotado se puede cargar (antes la busqueda no lo mostraba); una bici vendida no', async () => {
+    const jp = persona('administrador'), rafa = persona('administrador'), otro = persona('administrador');
+    const enMovTipo = (u) => ({ telegram_id: u.telegram_id, estado: 'MOV_TIPO', datos: '{}', ts: '' });
+    await sim.planilla({ USUARIOS: [jp, rafa, otro], SESIONES: [enMovTipo(jp), enMovTipo(rafa), enMovTipo(otro)],
+      STOCK: [acc({ stock_actual: 0, estado_unidad: 'vendido' }), bici({ stock_actual: 0, estado_unidad: 'vendido' })] });
+    await ir(sim.boton(jp.telegram_id, 'mov_e'), sim.texto(jp.telegram_id, 'casco'));
+    assert.match(sim.ultimo(jp.telegram_id).text, /Producto: <b>Bell Casco Sport<\/b>/);
+    await ir(sim.boton(rafa.telegram_id, 'mov_e'), sim.texto(rafa.telegram_id, 'mojave'));
+    assert.match(sim.ultimo(rafa.telegram_id).text, /No encontré/, 'la bici vendida no aparece');
+    await ir(sim.boton(otro.telegram_id, 'mov_s'), sim.texto(otro.telegram_id, 'casco'));
+    assert.match(sim.ultimo(otro.telegram_id).text, /No encontré/, 'en una SALIDA el agotado no aparece');
+  }],
+
   ['un movimiento rechazado no se puede aprobar despues con un boton viejo', async () => {
     const jp = persona('administrador');
     await sim.planilla({ USUARIOS: [jp], STOCK: [bici({ stock_actual: 1 })], MOVIMIENTOS_PENDIENTES: [mov({ estado: 'rechazado' })] });
