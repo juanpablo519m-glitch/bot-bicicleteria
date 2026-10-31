@@ -51,6 +51,40 @@ sim.correr([
     assert.ok(!sim.llamadas.some((l) => /n8n|drive-upload/.test(String(l.url))), 'ni una llamada a n8n');
   }],
 
+  ['si Google falla, AVISA por Telegram (esto falló 7 meses en silencio)', async () => {
+    const axios = require('axios');
+    const post = axios.post;
+    axios.post = async (url, ...r) => {
+      if (String(url).includes('upload/drive')) throw new Error('simulado: el permiso venció');
+      return post(url, ...r);
+    };
+    try {
+      await uploadToDrive(TG, 'producto_B9_1.jpg', 'image/jpeg');
+      await sim.esperarRed();
+      const m = sim.ultimo(1);                         // ADMIN_ID en las pruebas es 1
+      assert.ok(m, 'le tiene que llegar un mensaje al admin');
+      assert.ok(/no se guardó en Drive/.test(m.text), 'le avisa: ' + String(m.text).slice(0, 120));
+      assert.ok(/venció/.test(m.text), 'y le dice el motivo');
+      assert.ok(/queda la de Telegram/.test(m.text), 'y lo tranquiliza: la foto no se perdió');
+    } finally { axios.post = post; }
+  }],
+
+  ['NO avisa dos veces el mismo día (un aviso por día, no molesta)', async () => {
+    const axios = require('axios');
+    const post = axios.post;
+    axios.post = async (url, ...r) => {
+      if (String(url).includes('upload/drive')) throw new Error('simulado: falla de nuevo');
+      return post(url, ...r);
+    };
+    try {
+      const antes = sim.mensajesA(1).length;
+      await uploadToDrive(TG, 'producto_B10_1.jpg', 'image/jpeg');
+      await uploadToDrive(TG, 'producto_B11_1.jpg', 'image/jpeg');
+      await sim.esperarRed();
+      assert.strictEqual(sim.mensajesA(1).length, antes, 'ya avisó hoy: no repite');
+    } finally { axios.post = post; }
+  }],
+
   ['si Google falla, devuelve null y NO rompe (la foto se guarda con la referencia de Telegram)', async () => {
     sim.llamadas.length = 0;
     const axios = require('axios');
