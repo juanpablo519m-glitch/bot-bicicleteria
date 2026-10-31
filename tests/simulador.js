@@ -11,6 +11,9 @@ Object.assign(process.env, {
   BOT_TOKEN: 'TOKEN-DE-PRUEBA', SHEET_ID: 'PLANILLA-DE-PRUEBA', SA_EMAIL: 'prueba@example.invalid',
   SA_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }), GROQ_KEY: 'groq-de-prueba',
   ADMIN_ID: '1', WEBHOOK_URL: 'https://bot.example.invalid/webhook',
+  // el permiso de Drive de Juan Pablo, de mentira (desde el 31/10/2026 el bot sube solo, sin n8n)
+  GOOGLE_OAUTH_CLIENT_ID: 'cliente-de-prueba', GOOGLE_OAUTH_CLIENT_SECRET: 'secreto-de-prueba',
+  GOOGLE_OAUTH_REFRESH: 'permiso-de-prueba',
 });
 for (const m of ['http', 'https']) {
   const mod = require(m);
@@ -95,7 +98,10 @@ function atender(metodo, url, body) {
     if (url.includes('/audio/')) return responder(() => ({ text: telegram.transcripcion }));
     return responder(() => ({ choices: [{ message: { content: telegram.ocr } }] }));
   }
-  if (url.includes('drive-upload')) return responder(() => ({ url: 'https://drive.example.invalid/archivo' }));
+  // Drive: desde el 31/10/2026 el bot sube solo (antes pasaba por n8n, que estaba apagado y vencido)
+  if (url.includes('googleapis.com/upload/drive')) return responder(() => ({ id: 'archivo-de-prueba', webViewLink: 'https://drive.example.invalid/archivo' }));
+  if (/drive\/v3\/files\/[^/]+\/permissions/.test(url)) return responder(() => ({ id: 'permiso-de-prueba' }));
+  if (url.includes('api.telegram.org/file/')) return responder(() => Buffer.from('foto de prueba'));
   if (url.includes('sheets.googleapis.com')) {
     if (url.includes('?fields=sheets.properties')) return responder(() => ({ sheets: Object.keys(hojas).map((title, sheetId) => ({ properties: { title, sheetId } })) }));
     if (/:batchUpdate$/.test(url) && !url.includes('/values')) return responder(() => ({}));   // formato (colores, merges)
